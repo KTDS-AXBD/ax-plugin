@@ -1,0 +1,21 @@
+{
+  "name": "ax",
+  "version": "1.0.0",
+  "description": "AX BD팀 개발 워크플로우 스킬셋 — 세션 관리, Sprint 오케스트레이션, 거버넌스, 요구사항 관리, 코드 검증/배포. 21개 스킬 + 15개 표준 + 2개 규칙.",
+  "author": {
+    "name": "KTDS AX BD팀",
+    "email": "ktds.axbd@gmail.com"
+  },
+  "repository": "https://github.com/KTDS-AXBD/ax-plugin",
+  "license": "MIT",
+  "keywords": [
+    "ax",
+    "workflow",
+    "sprint",
+    "governance",
+    "session",
+    "requirements",
+    "devops",
+    "team"
+  ]
+}

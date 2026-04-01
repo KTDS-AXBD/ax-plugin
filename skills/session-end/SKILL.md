@@ -1,0 +1,710 @@
+---
+name: session-end
+description: |
+  세션 종료 시 코드 커밋 + 문서 갱신 + git push + CI/CD 배포.
+  프로젝트에 맞게 동작: SPEC.md/CHANGELOG.md가 있으면 갱신, 없으면 건너뜀.
+  Use when: 세션 종료, 마무리, session end, 끝, 커밋하고 푸시, wrap up
+argument-hint: "[추가 메모]"
+user-invocable: true
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+---
+
+# Session End — 커밋 + 문서 갱신 + Push + 배포
+
+## 아키텍처
+
+```
+1. Git 커밋 (코드 변경)
+2. 프로젝트 문서 갱신 (있으면)
+3. F항목 완료 처리 (SPEC.md + 앱 DB 동기화)
+3b. REQ/TD 상태 일괄 갱신
+3c. GitHub Issues 동기화 (SPEC.md ↔ Issues 상태 일치)
+4. Auto Memory 갱신 (MEMORY.md)
+5. 문서 커밋
+6. Git push (CI/CD 자동 트리거)
+```
+
+## 워크트리 분기 (자동 감지)
+
+세션 종료 시 현재 디렉토리가 worktree인지 자동 감지하여 동작을 분기한다.
+
+```bash
+if [ -f .git ]; then
+  IS_WORKTREE=true
+  CURRENT_BRANCH=$(git branch --show-current)
+  SPRINT_CONTEXT=".sprint-context"
+  [ -f "$SPRINT_CONTEXT" ] && SPRINT_NUM=$(grep SPRINT_NUM "$SPRINT_CONTEXT" | cut -d= -f2)
+else
+  IS_WORKTREE=false
+fi
+```
+
+**워크트리(Sprint) 세션인 경우 — 간소화된 종료:**
+
+1. **Phase 1만 실행**: 코드 커밋 + typecheck/lint/test 검증
+2. **Sprint 브랜치에 push** (master가 아님):
+   ```bash
+   git push -u origin "$CURRENT_BRANCH"
+   ```
+3. **건너뛰는 Phase들**:
+   - Phase 0 (CLAUDE.md currency) — master에서 관리
+   - Phase 0c (열거형 검증) — master에서 관리
+   - Phase 0d (Migration drift) — master에서 배포 시 확인
+   - Phase 2 (SPEC.md/CHANGELOG 갱신) — master의 `/ax-sprint merge`에서 처리
+   - Phase 3 (F항목 완료) — master의 `/ax-sprint merge`에서 처리
+   - Phase 3b/3c (REQ/GitHub Issues) — master에서 관리
+   - Phase 6 (CI/CD 배포 점검) — master에서 merge 후 실행
+4. **Phase 4 (MEMORY.md)**: 간략 업데이트만 (세션 요약 1줄)
+5. **안내 출력**:
+   ```
+   ## Sprint $SPRINT_NUM 세션 종료
+
+   - ✅ 코드 커밋: `abc1234`
+   - ✅ Push: origin/$CURRENT_BRANCH
+   - ⏭️ SPEC/CHANGELOG/배포: Master에서 `/ax-sprint merge $SPRINT_NUM` 으로 진행
+
+   ### Master에서 할 일
+   /ax-sprint review $SPRINT_NUM
+   /ax-sprint pr $SPRINT_NUM  (또는 merge)
+   ```
+
+**Master 세션인 경우 — 기존 동작 그대로:**
+
+아래 모든 Phase를 순서대로 실행한다.
+
+## Steps
+
+### Phase 0: CLAUDE.md Currency Check (자동)
+
+프로젝트 root에 CLAUDE.md가 있으면 아래 항목을 자동 검증한다.
+불일치 발견 시 수정을 포함하여 Phase 1 커밋에 함께 반영한다.
+
+**검증 항목:**
+1. **브랜치명**: CLAUDE.md에 기재된 브랜치명 vs `git branch --show-current`
+2. **Phase 상태**: CLAUDE.md Status/Development Phases vs SPEC.md의 Current Phase (SPEC.md가 있을 때)
+3. **PRD 버전**: CLAUDE.md에 참조된 PRD 파일이 실제 `docs/` 에 존재하는지, 더 최신 버전이 있는지
+4. **패키지 버전**: CLAUDE.md의 프로젝트 버전 vs `package.json` version
+
+**동작:**
+- 불일치 항목이 있으면 CLAUDE.md를 수정하고, 변경사항을 Phase 1 커밋에 포함
+- 모든 항목이 일치하면 "CLAUDE.md currency: OK" 출력 후 건너뜀
+- 검증 불가 항목(비교 기준 파일 부재)은 건너뜀
+
+### Phase 0c: CLAUDE.md 열거형 목록 검증 (자동)
+
+CLAUDE.md에 열거된 코드 구조 정보가 실제 파일시스템과 일치하는지 검증한다.
+검증 대상 디렉토리/파일이 없는 프로젝트에서는 해당 항목을 건너뜀.
+
+**검증 항목:**
+
+5. **BC 수 + 목록** (디렉토리 구조 섹션):
+   ```bash
+   # 실제 BC 목록 (app/features/ 디렉토리 존재 시)
+   ls -d app/features/*/ 2>/dev/null | xargs -I{} basename {} | sort | tr '\n' ', '
+   ```
+   - CLAUDE.md "디렉토리 구조" 섹션의 BC 수, 이름 목록과 비교
+   - 수 또는 목록이 다르면 해당 라인 수정
+
+6. **스키마 머지 목록** (스키마 머지 섹션):
+   ```bash
+   # 실제 import 목록 (app/db/index.ts 존재 시)
+   grep '^import \* as' app/db/index.ts | sed 's/import \* as \([^ ]*\).*/\1/'
+   ```
+   - CLAUDE.md "스키마 머지" 섹션의 스키마 이름 목록과 비교
+   - 목록이 다르면 해당 라인 수정 (수도 함께 갱신)
+
+7. **프로젝트 스킬 테이블** (프로젝트 스킬 섹션):
+   ```bash
+   # 실제 스킬 목록 (.claude/skills/ 존재 시)
+   ls .claude/skills/ 2>/dev/null
+   ```
+   - CLAUDE.md "프로젝트 스킬" 테이블에 누락된 스킬이 있으면 추가
+   - description은 해당 스킬의 SKILL.md frontmatter `description:` 에서 추출
+   - 삭제된 스킬은 테이블에서 제거
+
+8. **프로젝트 에이전트 테이블** (프로젝트 에이전트 섹션):
+   ```bash
+   # 실제 에이전트 목록 (.claude/agents/ 존재 시)
+   ls .claude/agents/*.md 2>/dev/null | xargs -I{} basename {} .md
+   ```
+   - CLAUDE.md "프로젝트 에이전트" 테이블에 누락된 에이전트가 있으면 추가
+   - description은 해당 에이전트 `.md` frontmatter `description:` 에서 추출
+   - 삭제된 에이전트는 테이블에서 제거
+
+9. **SSR 외부화 목록** (SSR 외부화 섹션):
+   ```bash
+   # 실제 external 목록 (vite.config.ts 존재 시)
+   grep -A20 'external:' vite.config.ts | grep '"[^"]*"' | sed 's/.*"\([^"]*\)".*/\1/'
+   # 실제 noExternal 목록
+   grep -A20 'noExternal:' vite.config.ts | grep '"[^"]*"' | sed 's/.*"\([^"]*\)".*/\1/'
+   ```
+   - CLAUDE.md "SSR 외부화" 섹션의 `ssr.external`, `ssr.noExternal` 목록과 비교
+   - 목록이 다르면 해당 라인 수정
+
+10. **환경 변수 목록** (환경 변수 섹션):
+    ```bash
+    # 실제 환경 변수 키 목록 (.dev.vars 존재 시)
+    grep -oP '^[A-Z_]+' .dev.vars | sort
+    ```
+    - CLAUDE.md "환경 변수" 섹션의 변수명 목록과 비교
+    - 누락된 변수가 있으면 추가, 삭제된 변수가 있으면 제거
+
+11. **API routes 수 + 목록** (Repository Structure 섹션):
+    ```bash
+    # 실제 routes 목록 (packages/api/src/routes/ 또는 src/routes/ 존재 시)
+    ROUTES_DIR=$(find . -path "*/api/src/routes" -type d 2>/dev/null | head -1)
+    if [ -n "$ROUTES_DIR" ]; then
+      ls "$ROUTES_DIR"/*.ts 2>/dev/null | xargs -I{} basename {} .ts | sort
+    fi
+    ```
+    - CLAUDE.md Repository Structure의 routes 수, 이름 목록과 비교
+    - 수 또는 목록이 다르면 해당 라인 수정
+
+12. **API services 수 + 목록** (Repository Structure 섹션):
+    ```bash
+    # 실제 services 목록 (packages/api/src/services/ 또는 src/services/ 존재 시)
+    SERVICES_DIR=$(find . -path "*/api/src/services" -type d 2>/dev/null | head -1)
+    if [ -n "$SERVICES_DIR" ]; then
+      ls "$SERVICES_DIR"/*.ts 2>/dev/null | xargs -I{} basename {} .ts | sort
+    fi
+    ```
+    - CLAUDE.md Repository Structure의 services 수, 이름 목록과 비교
+    - 수 또는 목록이 다르면 해당 라인 수정
+
+13. **API schemas 수 + 목록** (Repository Structure 섹션):
+    ```bash
+    # 실제 schemas 목록 (packages/api/src/schemas/ 또는 src/schemas/ 존재 시)
+    SCHEMAS_DIR=$(find . -path "*/api/src/schemas" -type d 2>/dev/null | head -1)
+    if [ -n "$SCHEMAS_DIR" ]; then
+      ls "$SCHEMAS_DIR"/*.ts 2>/dev/null | xargs -I{} basename {} .ts | sort
+    fi
+    ```
+    - CLAUDE.md Repository Structure의 schemas 수, 이름 목록과 비교
+    - 수 또는 목록이 다르면 해당 라인 수정
+
+**동작:**
+- 불일치 항목이 있으면 CLAUDE.md를 수정하고, Phase 1 커밋에 포함
+- 모든 항목이 일치하면 "CLAUDE.md sync: OK" 출력 후 건너뜀
+- 최종 요약에 수정된 항목 수를 포함 (예: "CLAUDE.md sync: 2건 수정")
+
+### Phase 0d: Migration Drift Check (자동)
+
+프로덕션 D1에 미적용 마이그레이션이 있는지 확인한다. `wrangler.toml`에 `d1_databases` 설정이 없으면 건너뜀.
+
+```bash
+DB_NAME=$(grep 'database_name' wrangler.toml 2>/dev/null | head -1 | awk -F'"' '{print $2}')
+if [ -n "$DB_NAME" ]; then
+  PENDING_OUTPUT=$(npx wrangler d1 migrations list "$DB_NAME" --remote 2>&1)
+  if echo "$PENDING_OUTPUT" | grep -q "Migrations to be applied"; then
+    # 테이블 행에서 마이그레이션 이름 추출
+    PENDING_LIST=$(echo "$PENDING_OUTPUT" | grep '│' | grep -v 'Name' | sed 's/│//g; s/^ *//; s/ *$//' | grep -v '^$' | grep '.sql')
+    PENDING_COUNT=$(echo "$PENDING_LIST" | wc -l)
+    echo "⚠️ 프로덕션 미적용 마이그레이션 ${PENDING_COUNT}건 감지:"
+    echo "$PENDING_LIST"
+  else
+    echo "Migration drift: OK"
+  fi
+fi
+```
+
+**동작:**
+- 미적용 마이그레이션이 있으면:
+  1. ⚠️ 경고 + 목록 출력
+  2. 사용자에게 `wrangler d1 migrations apply $DB_NAME --remote` 실행 여부 확인 (AskUserQuestion)
+  3. 사용자가 승인하면 적용 후 계속 진행
+  4. 사용자가 건너뛰면 최종 요약에 ⚠️ 미적용 경고 포함
+- 미적용이 없으면: "Migration drift: OK" 출력 후 건너뜀
+- wrangler.toml 없거나 D1 설정 없으면 건너뜀
+
+### Phase 0e: Session Cleanup (자동)
+
+세션 중 생성된 임시 파일/디렉토리를 커밋 전에 자동 정리한다.
+
+```bash
+# 1. Zone.Identifier 삭제 (WSL 아티팩트)
+ZI_COUNT=$(find . -name "*Zone.Identifier" -not -path "*/node_modules/*" -not -path "*/.git/*" -delete -print 2>/dev/null | wc -l)
+
+# 2. .team-tmp/ 정리 (Agent Team 임시 파일)
+if [ -d .team-tmp ]; then
+  rm -rf .team-tmp
+  TEAM_TMP_CLEANED=true
+fi
+```
+
+**동작:**
+- `ZI_COUNT > 0` 또는 `TEAM_TMP_CLEANED`이면 최종 요약에 포함 (예: "🧹 Zone.Identifier 3건 + .team-tmp 정리")
+- 정리 대상이 없으면 건너뜀 (출력 없음)
+- 사용자 확인 불필요 — 항상 불필요한 대상만 정리
+
+### Phase 0b: Pane Scope 감지 (멀티 pane 지원)
+
+이 pane의 변경 파일만 식별한다.
+
+```bash
+PANE_ID="${TMUX_PANE#%}"
+BASELINE="/tmp/claude-session-baseline-pane${PANE_ID}"
+START_COMMIT_FILE="/tmp/claude-session-commit-pane${PANE_ID}"
+```
+
+**1) 이 세션의 변경 파일 식별:**
+
+```bash
+# 현재 dirty 파일 목록
+git status --porcelain | sort > /tmp/claude-session-current-pane${PANE_ID}
+
+if [ -f "$BASELINE" ]; then
+  # baseline에 없는 새 변경 = 이 세션의 변경
+  # comm -13: baseline에만 있는 것 제외 → 이 세션에서 새로 생긴 것만
+  SESSION_FILES=$(comm -13 "$BASELINE" "/tmp/claude-session-current-pane${PANE_ID}" | awk '{print $NF}')
+  # 세션 중 커밋된 파일도 포함 (start commit 이후 커밋)
+  if [ -f "$START_COMMIT_FILE" ]; then
+    START_COMMIT=$(cat "$START_COMMIT_FILE")
+    COMMITTED_FILES=$(git diff --name-only "$START_COMMIT" HEAD 2>/dev/null)
+  fi
+else
+  # baseline 없음 (ax-session-start 없이 시작) — 전체 변경을 이 세션의 것으로 간주
+  SESSION_FILES=$(git status --porcelain | awk '{print $NF}')
+fi
+```
+
+**2) 결과 활용:**
+- `SESSION_FILES`: 이 pane이 스테이징/커밋할 대상
+- baseline에 있던 파일(다른 pane의 미커밋 변경)은 **건드리지 않음**
+
+> baseline이 없으면 (예: `/ax-session-start` 없이 세션 시작) 기존 동작과 동일하게 전체 변경을 처리한다.
+
+### Phase 1: Git 커밋 (Pane-Scoped)
+
+1. Phase 0b에서 식별한 `SESSION_FILES`를 기준으로 변경사항을 확인한다.
+   - 다른 pane의 미커밋 변경이 섞여 있으면 **해당 파일은 스테이징하지 않는다**.
+   - `git diff <해당 파일들만>`으로 이 세션의 변경 내용을 확인한다.
+2. 이 세션의 코드 변경사항만 커밋 (문서 파일 제외):
+   - `git add <SESSION_FILES의 각 파일>` — 이 세션의 파일만 개별 지정하여 스테이징
+   - 논리적 단위로 분리 가능하면 여러 커밋으로 나누기
+   - 컨벤션: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`
+   - `.env`, 자격 증명 파일 커밋 금지
+   - **절대 `git add .` 또는 `git add -A` 사용 금지** — 다른 pane의 변경이 포함될 수 있음
+3. 프로젝트의 검증 명령 실행 — **이 세션의 변경 파일 관련 테스트만**:
+   - typecheck: 전체 실행 (파일 단위 분리 불가)
+   - lint: 변경 파일만 (`pnpm lint -- <변경 파일>` 또는 전체)
+   - test: 변경 파일과 관련된 테스트만 실행
+     ```bash
+     # 변경된 소스 파일에서 관련 테스트 파일 탐색
+     for f in $SESSION_FILES; do
+       # app/features/cost/service/foo.ts → tests/**/cost/*foo* 또는 tests/**/*foo*
+       basename=$(basename "$f" .ts)
+       find tests -name "*${basename}*" -name "*.test.ts" 2>/dev/null
+     done | sort -u
+     # 관련 테스트가 있으면 해당 파일만 실행, 없으면 전체 실행
+     ```
+
+### Phase 2: 프로젝트 문서 갱신 (선택)
+
+프로젝트에 다음 파일이 있으면 갱신한다. 없으면 건너뜀.
+
+**SPEC.md** (또는 유사 상태 파일):
+- 숫자/지표만 업데이트 (테스트 수, 빌드 상태 등)
+- 세션 히스토리는 추가하지 않음
+
+**CHANGELOG.md** (또는 docs/CHANGELOG.md):
+- 파일 상단에 이번 세션 기록 추가:
+```markdown
+### 세션 NNN (YYYY-MM-DD)
+**[작업 요약 1줄]**:
+- ✅ [변경 1]
+- ✅ [변경 2]
+
+**검증 결과**:
+- ✅ typecheck / lint / tests / build
+```
+
+### Phase 3: F항목 완료 처리 (자동)
+
+이번 세션에서 작업한 F항목을 감지하고 자동으로 완료 처리한다.
+
+**감지 방법** (우선순위 순):
+1. SPEC.md에서 상태가 🔧(IN_PROGRESS)인 F항목을 찾는다.
+2. 세션 시작 시 `/ax-session-start F{N}`으로 지정된 항목이 있는지 확인한다.
+3. 이번 세션의 커밋 메시지에서 F항목 참조를 찾는다.
+
+**F항목이 감지된 경우:**
+
+1. 해당 F항목의 작업이 실제 완료됐는지 확인:
+   - 커밋에 관련 코드 변경이 포함되어 있는지
+   - typecheck/lint/test를 통과했는지
+   - 완료 판단이 애매하면 건너뜀 (과도한 자동 완료 방지)
+
+2. **SPEC.md 갱신**: 상태를 🔧 → ✅로 변경
+
+3. **앱 DB 동기화** (wrangler.toml + d1_databases 존재 시):
+   ```bash
+   DB_NAME=$(grep 'database_name' wrangler.toml 2>/dev/null | head -1 | awk -F'"' '{print $2}')
+   if [ -n "$DB_NAME" ]; then
+     npx wrangler d1 execute "$DB_NAME" --remote --command \
+       "UPDATE feature_requests SET status='DONE' WHERE spec_item_id='F{N}' AND status='IN_PROGRESS';"
+   fi
+   ```
+
+4. MEMORY.md "다음 작업"에서 해당 항목 제거
+
+5. **StatusLine 상태 파일 정리** (tmux pane별):
+   ```bash
+   PANE_ID="${TMUX_PANE#%}"
+   rm -f "/tmp/claude-req-pane${PANE_ID}" /tmp/claude-current-req
+   ```
+
+6. 세션 종료 요약에 F항목 완료 정보를 포함한다.
+
+**F항목이 감지되지 않은 경우:**
+- 건너뜀 (F항목 없이도 세션 종료는 정상 진행)
+
+### Phase 3b: REQ 상태 일괄 갱신 (자동)
+
+요구사항 관리 표준(`~/.claude/standards/requirements-governance.md`)에 따라
+이번 세션에서 변경된 REQ/TD 상태를 SPEC.md에 반영한다.
+
+**REQ 완료 처리:**
+1. 이번 세션에서 DONE으로 전환된 REQ를 수집
+2. SPEC.md §6 Execution Plan에서 대응 체크박스를 `[x]` + `(REQ-ID DONE)` 주석으로 동기화
+3. 마일스톤/스프린트 완료 시 독립 REQ가 없으면 소급 등록 제안
+
+**TD 해소 기록:**
+1. 이번 세션에서 해소된 Tech Debt를 감지
+2. SPEC.md §8 Tech Debt 테이블에서 해당 TD에:
+   - ID를 `~~취소선~~` 처리
+   - 영향 컬럼에 `해소 (세션 NNN)` 기록
+3. MEMORY.md "활성 리스크"에서 해소 항목 제거
+
+**동작:**
+- 변경사항이 있으면 Phase 5 문서 커밋에 포함
+- 변경 없으면 건너뜀
+- 최종 요약에 REQ/TD 변경 건수 포함
+
+### Phase 3c: GitHub Issues 동기화 (자동)
+
+SPEC.md F-items 상태와 GitHub Issues 상태를 동기화한다.
+`gh` CLI가 설치되어 있고, 리포에 GitHub remote가 설정된 경우에만 실행한다.
+
+**사전 조건:**
+```bash
+# gh CLI 존재 + GitHub remote 감지
+GH_AVAILABLE=$(command -v gh >/dev/null 2>&1 && echo true || echo false)
+GITHUB_REPO=$(git remote get-url origin 2>/dev/null | grep -oP '(?<=github.com[:/])[^.]+' || true)
+# PAT 기반 인증이 필요한 경우 (GH_TOKEN 미설정 시)
+if [ -f .git/.credentials ] && [ -z "$GH_TOKEN" ]; then
+  export GH_TOKEN=$(sed 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/' .git/.credentials)
+fi
+```
+
+**실행 조건:** `GH_AVAILABLE=true` AND `GITHUB_REPO` 비어있지 않음. 아니면 건너뜀.
+
+**동기화 로직:**
+
+1. **SPEC.md에서 F-item 상태 수집:**
+   - `✅` → DONE
+   - `🔧` → IN_PROGRESS
+   - `📋` → PLANNED
+
+2. **GitHub Issues에서 `[F{N}]` 패턴 매칭:**
+   ```bash
+   gh issue list --repo "$GITHUB_REPO" --state all --json number,title,state \
+     --jq '.[] | select(.title | test("^\\[F[0-9]+\\]"))' 2>/dev/null
+   ```
+
+3. **불일치 감지 및 수정:**
+
+   | SPEC 상태 | Issue 상태 | 동작 |
+   |----------|-----------|------|
+   | ✅ DONE | OPEN | `gh issue close {N} --comment "✅ SPEC.md DONE 동기화"` |
+   | 📋/🔧 | CLOSED | `gh issue reopen {N} --comment "🔄 SPEC.md와 동기화 — 미완료 항목"` |
+   | ✅ DONE | CLOSED | 일치 — 건너뜀 |
+   | 📋/🔧 | OPEN | 일치 — 건너뜀 |
+
+4. **결과 보고:**
+   - 변경 건수를 최종 요약에 포함 (예: "GitHub Issues: 3건 close, 0건 reopen")
+   - 변경 없으면 "GitHub Issues: 동기화 완료 (불일치 0건)"
+   - gh 미설치/remote 없으면 "⏭️ GitHub Issues: 건너뜀 (gh 미설치 또는 remote 없음)"
+
+**주의:**
+- SPEC.md에 없는 Issue(F번호 매칭 불가)는 건드리지 않음
+- Sprint 1/2 F-items (F1~F14)은 GitHub Issues로 등록되지 않았을 수 있음 — 매칭 실패 시 건너뜀
+- `GH_TOKEN`은 `.git/.credentials`에서 자동 추출하거나, 환경변수에서 사용
+
+5. **GitHub Project Status 동기화:**
+
+   Issue 상태 변경과 함께 Org Project의 Status 필드도 갱신한다.
+
+   ```bash
+   GH_ORG=$(echo "$GITHUB_REPO" | cut -d'/' -f1)
+   PROJECT_NUM=$(gh project list --owner "$GH_ORG" --format json \
+     --jq '.projects[] | select(.closed==false) | .number' 2>/dev/null | head -1)
+   ```
+
+   Project가 존재하면:
+
+   a. **Issue가 Project에 미등록인 경우** → `gh project item-add`로 추가
+   b. **Status 갱신**: SPEC 상태에 맞춰 Project Status 변경
+      - ✅ DONE → "Done"
+      - 🔧 IN_PROGRESS → "In Progress"
+      - 📋 PLANNED → "Todo"
+   c. **필드 ID 조회**: `gh project field-list`로 Status 필드의 option ID를 가져온 뒤 `gh project item-edit`로 설정
+
+   ```bash
+   # 각 Issue에 대해:
+   ISSUE_URL="https://github.com/${GITHUB_REPO}/issues/${ISSUE_NUM}"
+   ITEM_ID=$(gh project item-list "$PROJECT_NUM" --owner "$GH_ORG" --format json \
+     --jq ".items[] | select(.content.url==\"${ISSUE_URL}\") | .id" 2>/dev/null)
+
+   # 미등록이면 추가
+   if [ -z "$ITEM_ID" ]; then
+     ITEM_ID=$(gh project item-add "$PROJECT_NUM" --owner "$GH_ORG" \
+       --url "$ISSUE_URL" --format json --jq '.id' 2>/dev/null)
+   fi
+
+   # Status 설정 (PROJECT_ID_GLOBAL = gh project list의 id 필드)
+   if [ -n "$ITEM_ID" ]; then
+     gh project item-edit --project-id "$PROJECT_ID_GLOBAL" --id "$ITEM_ID" \
+       --field-id "$STATUS_FIELD_ID" --single-select-option-id "$STATUS_OPTION_ID" 2>/dev/null
+   fi
+   ```
+
+   - 결과: "GitHub Project: N건 추가, N건 Status 갱신"
+   - Project 없으면: "⏭️ GitHub Project: 건너뜀 (Org Project 미설정)"
+
+### Phase 4: Auto Memory 갱신
+
+Auto Memory 디렉토리의 MEMORY.md를 업데이트:
+
+1. **현재 버전 & 상태**: 최신화
+2. **최근 세션 요약** (sliding window, 최대 3개):
+   - 이번 세션을 맨 위에 1줄 요약으로 추가
+   - 3개 초과 시 가장 오래된 것 제거
+3. **주요 지표**: 변경된 숫자만 업데이트
+4. **다음 작업**: `$ARGUMENTS`의 추가 메모 반영
+5. **BC/스키마 구조 정합성** (MEMORY.md에 "BC 구조 현황" 섹션이 있을 때):
+   - `ls -d app/features/*/` 결과와 MEMORY.md의 BC 수/이름 목록 비교
+   - `grep '^import' app/db/index.ts`의 스키마 수와 MEMORY.md "db/index.ts 스키마 머지" 비교
+   - `ls app/features/*/db/schema.ts` 결과와 MEMORY.md의 db/schema 수 비교
+   - `ls -d app/features/*/ui/` 결과와 MEMORY.md의 ui 수 비교
+   - 불일치 시 MEMORY.md 해당 섹션의 수치/목록만 수정 (구조는 유지)
+5b. **API 구조 정합성** (MEMORY.md에 "주요 지표" 섹션이 있을 때):
+   - Phase 0c 항목 11~13에서 실측한 routes/services/schemas 수를 MEMORY.md 지표에도 동일하게 반영 (단일 소스 원칙)
+   - CLAUDE.md와 MEMORY.md 양쪽의 수치가 동일한지 교차 검증
+   - 불일치 시 파일시스템 실측값을 기준으로 양쪽 모두 수정
+6. **[→CLAUDE] 마커 승격**:
+   - MEMORY.md에서 `[→CLAUDE]` 마커가 붙은 항목을 검색한다
+   - 마커 항목이 프로젝트 CLAUDE.md에 이미 반영됐는지 확인한다
+   - 미반영 항목: CLAUDE.md 적절한 섹션(주로 Gotchas)에 추가
+   - 반영 완료 항목: MEMORY.md에서 `[→CLAUDE]` 마커를 제거한다
+   - 변경사항은 Phase 5 문서 커밋에 포함한다
+   - 최종 요약에 승격 결과를 포함한다
+
+### Phase 5: 문서 커밋
+
+```bash
+git add SPEC.md docs/CHANGELOG.md  # 존재하는 파일만
+git commit -m "docs: update SPEC.md + CHANGELOG — 세션 NNN [요약]"
+```
+
+### Phase 6: Git Push + 배포 점검 (필수)
+
+```bash
+git push origin $(git branch --show-current)
+```
+
+> **중요**: Push 후 배포 점검은 **반드시 실행**한다. 건너뛰거나 "나중에 확인" 하지 않는다.
+> `gh` CLI 미설치 또는 GitHub Actions 미설정인 경우에만 SKIP 허용.
+
+**Step 1 — CI/CD Run 감지 + 완료 대기** (최대 3분):
+
+```bash
+# gh CLI + GitHub remote 확인
+GH_AVAILABLE=$(command -v gh >/dev/null 2>&1 && echo true || echo false)
+GITHUB_REPO=$(git remote get-url origin 2>/dev/null | grep -oP '(?<=github.com[:/])[^.]+' || true)
+if [ "$GH_AVAILABLE" != "true" ] || [ -z "$GITHUB_REPO" ]; then
+  echo "⏭️ 배포 점검 건너뜀 (gh 미설치 또는 remote 없음)"
+  # 여기서 Phase 6 종료
+fi
+
+# push 직후 최신 run 감지 (최대 10초 대기 — Actions 트리거 지연 허용)
+sleep 5
+RUN_ID=$(gh run list --repo "$GITHUB_REPO" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null)
+
+# 완료까지 폴링 (30초 × 6 = 최대 3분)
+for i in 1 2 3 4 5 6; do
+  STATUS=$(gh run view "$RUN_ID" --repo "$GITHUB_REPO" \
+    --json status,conclusion \
+    --jq '.status + ":" + (.conclusion // "")' 2>/dev/null)
+  case "$STATUS" in
+    completed:success) DEPLOY_RESULT="✅ 성공"; break ;;
+    completed:failure) DEPLOY_RESULT="❌ 실패"; break ;;
+    completed:*)       DEPLOY_RESULT="⚠️ $STATUS"; break ;;
+    *)                 echo "⏳ 대기 중... ($i/6)"; sleep 30 ;;
+  esac
+done
+[ -z "$DEPLOY_RESULT" ] && DEPLOY_RESULT="⏳ 타임아웃 (3분 초과)"
+```
+
+**Step 2 — Job별 상세 결과 수집** (반드시 실행):
+
+```bash
+gh run view "$RUN_ID" --repo "$GITHUB_REPO" \
+  --json jobs \
+  --jq '.jobs[] | "\(.name): \(.conclusion // .status)"' 2>/dev/null
+```
+
+결과를 테이블로 정리하여 최종 요약에 포함한다:
+```
+| Job | 상태 | 비고 |
+|-----|:----:|------|
+| test | ✅/❌ | ... |
+| deploy-api | ✅/❌ | ... |
+| deploy-web | ✅/❌ | ... |
+| smoke-test | ✅/❌ | ... |
+```
+
+**Step 3 — 실패 Job 원인 분석** (실패 시 반드시 실행):
+
+```bash
+if echo "$DEPLOY_RESULT" | grep -q "실패"; then
+  gh run view "$RUN_ID" --repo "$GITHUB_REPO" --log-failed 2>/dev/null | tail -40
+fi
+```
+- 실패 로그에서 핵심 에러를 추출하여 최종 요약에 포함
+- 일시적 실패(네트워크, rate limit)와 코드 실패를 구분
+- 코드 실패면 원인 설명, 일시적이면 재시도 여부를 사용자에게 확인
+
+**Step 4 — 프로덕션 헬스체크** (배포 성공 시 반드시 실행):
+
+```bash
+# MEMORY.md에서 프로덕션 URL 추출
+PROD_API=$(grep -oP 'https?://[^\s)]+workers\.dev' ~/.claude/projects/*/memory/MEMORY.md 2>/dev/null | head -1 || true)
+PROD_WEB=$(grep -oP 'https?://[^\s)]+\.(best|pages\.dev)' ~/.claude/projects/*/memory/MEMORY.md 2>/dev/null | head -1 || true)
+
+# API 헬스체크
+if [ -n "$PROD_API" ]; then
+  API_CODE=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 10 "$PROD_API/health" 2>/dev/null || echo "000")
+  [ "$API_CODE" = "200" ] && API_HEALTH="✅" || API_HEALTH="⚠️ HTTP $API_CODE"
+fi
+
+# Web 접근 확인
+if [ -n "$PROD_WEB" ]; then
+  WEB_CODE=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 10 "$PROD_WEB" 2>/dev/null || echo "000")
+  [ "$WEB_CODE" = "200" ] && WEB_HEALTH="✅" || WEB_HEALTH="⚠️ HTTP $WEB_CODE"
+fi
+```
+
+**Step 5 — 배포 점검 요약** (최종 요약의 "배포" 섹션):
+
+```
+### 배포 점검
+| 항목 | 결과 | 비고 |
+|------|:----:|------|
+| CI/CD Run | ✅/❌/⏳ | Run #{ID}, {소요시간} |
+| test | ✅/❌ | |
+| deploy-api | ✅/❌ | |
+| deploy-web | ✅/❌ | |
+| smoke-test | ✅/❌ | {실패 원인 요약} |
+| API 헬스체크 | ✅/⚠️ | {URL} HTTP {code} |
+| Web 접근 | ✅/⚠️ | {URL} HTTP {code} |
+```
+
+### Phase 6b: Cloudflare Pages 자동 배포 (조건부)
+
+**조건**: `apps/app-web/` 디렉토리가 존재하고, 이번 세션 커밋 중 `apps/app-web/` 변경이 포함된 경우.
+
+1. **변경 감지**:
+   ```bash
+   # 세션 시작 이후 커밋에서 app-web 변경 확인
+   CHANGED=$(git log --oneline --name-only HEAD~5..HEAD -- apps/app-web/ 2>/dev/null | head -1)
+   ```
+
+2. **빌드 + 배포** (변경이 감지된 경우):
+   ```bash
+   bun run build  # Turborepo: app-web 포함 전체 빌드
+   cd apps/app-web
+   # Pages 프로젝트명 동적 감지: wrangler.toml → MEMORY.md → 기본값 fallback
+   PAGES_PROJECT=$(grep -m1 'name\s*=' apps/app-web/wrangler.toml 2>/dev/null | sed 's/.*=\s*"\(.*\)"/\1/' || true)
+   [ -z "$PAGES_PROJECT" ] && PAGES_PROJECT=$(grep -oP 'Pages 배포:.*?`\K[^`]+' "$(find . -path '*/memory/MEMORY.md' -print -quit 2>/dev/null)" 2>/dev/null || true)
+   [ -z "$PAGES_PROJECT" ] && PAGES_PROJECT="ai-foundry-web"
+   npx wrangler pages deploy dist --project-name="$PAGES_PROJECT" --commit-dirty=true
+   ```
+
+3. **배포 확인**: 배포 URL을 출력하고 최종 요약에 포함한다.
+
+4. **변경 없음**: "app-web 변경 없음 — 배포 건너뜀" 출력.
+
+**주의**:
+- Pages 프로젝트명은 `apps/app-web/wrangler.toml` → MEMORY.md → 기본값 `ai-foundry-web` 순으로 동적 감지
+- 빌드 실패 시 배포를 중단하고 에러를 보고한다
+- `--commit-dirty=true`는 untracked 파일 경고를 억제한다
+
+### 최종 요약 출력
+
+```
+## 세션 종료 완료
+
+### Session Cleanup
+- 🧹 Zone.Identifier N건 삭제 / .team-tmp 정리 / 정리 대상 없음
+
+### Git 커밋
+- `abc1234` feat: [메시지]
+- `def5678` docs: update SPEC.md + CHANGELOG — 세션 NNN
+
+### F항목 완료
+- F{N} ({DX-REQ-NNN}): IN_PROGRESS → DONE ✅
+  - SPEC.md: ✅ 갱신
+  - 앱 DB: ✅ 동기화
+
+### GitHub Issues 동기화
+- Issues: N건 close, N건 reopen / 불일치 0건 / ⏭️ 건너뜀
+
+### Migration
+- D1 마이그레이션: ✅ 동기화 완료 / ⚠️ 미적용 N건 (목록) / ⏭️ D1 미사용
+
+### 배포 점검 (필수)
+| 항목 | 결과 | 비고 |
+|------|:----:|------|
+| CI/CD Run | ✅/❌/⏳ | Run #{ID} |
+| test | ✅/❌ | |
+| deploy-api | ✅/❌ | |
+| deploy-web | ✅/❌ | |
+| smoke-test | ✅/❌ | {실패 원인 요약} |
+| API 헬스체크 | ✅/⚠️ | {URL} HTTP {code} |
+| Web 접근 | ✅/⚠️ | {URL} HTTP {code} |
+- Pages: ✅ 배포 완료 (URL) / ⏭️ 변경 없음 (apps/app-web 프로젝트 전용)
+
+### 업데이트
+- SPEC.md: [변경된 지표]
+- MEMORY.md: 컨텍스트 갱신 완료
+- CHANGELOG.md: 세션 NNN 추가
+```
+
+## 주의사항
+
+- 프로젝트에 SPEC.md/CHANGELOG.md가 없으면 해당 Phase를 건너뜀
+- MEMORY.md는 Git 추적 대상이 아님 (auto memory 디렉토리)
+- CHANGELOG.md는 최신이 파일 상단에 오도록 prepend
+- F항목 완료 처리는 **보수적**으로 판단 — 확실히 완료된 경우에만 DONE 전환
+
+## Pane-Scoped 동작 요약
+
+| 항목 | baseline 있음 (정상) | baseline 없음 (fallback) |
+|------|---------------------|-------------------------|
+| 커밋 대상 | 이 세션의 새 변경 파일만 | 전체 변경 (기존 동작) |
+| 테스트 범위 | 변경 파일 관련 테스트만 | 전체 테스트 |
+| `git add` | 파일 개별 지정 | 파일 개별 지정 (동일) |
+| 다른 pane 변경 | 건드리지 않음 | 구분 불가 — 전체 처리 |
+
+**Baseline 파일 위치**:
+- `/tmp/claude-session-baseline-pane${PANE_ID}` — 시작 시 dirty 파일 목록
+- `/tmp/claude-session-commit-pane${PANE_ID}` — 시작 시 HEAD 커밋
+- `/tmp/claude-session-current-pane${PANE_ID}` — 종료 시 dirty 파일 목록
+
+> 세션 종료 후 baseline 파일은 자동 삭제하지 않는다 (디버깅용 보존, /tmp 재부팅 시 자동 정리).

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ax-marketplace",
+  "version": "1.0.0",
+  "description": "KTDS AX BD팀 Claude Code 개발 워크플로우 도구 — 세션/Sprint/거버넌스/요구사항 관리",
+  "owner": {
+    "name": "KTDS AX BD팀",
+    "email": "ktds.axbd@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "ax",
+      "description": "AX 개발 워크플로우 — 21개 스킬(세션/Sprint/거버넌스/요구사항/코드/인프라) + 15개 표준 + 2개 규칙",
+      "version": "1.0.0",
+      "author": {
+        "name": "KTDS AX BD팀",
+        "email": "ktds.axbd@gmail.com"
+      },
+      "repository": "https://github.com/KTDS-AXBD/ax-plugin",
+      "source": "./",
+      "category": "developer-tools",
+      "keywords": ["workflow", "sprint", "governance", "session", "devops"]
+    }
+  ]
+}
