@@ -109,9 +109,9 @@ fi
 2. **Tier 3**: 간단 요약 작성
 3. `.sprint-context`에 `CHECKPOINT=report` 기록
 
-### Step 7: Session End
+### Step 7: Session End + Signal 생성
 
-**Tier 1**: `/ax-session-end` 실행 (커밋 + push + 문서 갱신)
+**Tier 1**: `/ax:session-end` 실행 (커밋 + push + 문서 갱신)
 **Tier 2~3**: 직접 실행:
 ```bash
 git add -A  # worktree 전용이므로 안전
@@ -121,13 +121,67 @@ git push -u origin sprint/{N}
 
 `.sprint-context`에 `CHECKPOINT=session-end` 기록
 
-**Signal 최종 갱신**:
+**Signal 생성/갱신** (Master merge-monitor가 감지할 signal):
+> ccw/ccs 모드 무관하게 autopilot이 직접 signal을 생성한다. 이것이 Full Auto 프로세스의 핵심 연결 고리.
+
 ```bash
-sed -i "s/^STATUS=.*/STATUS=DONE/" "$SIGNAL_FILE"
-sed -i "s/^CHECKPOINT=.*/CHECKPOINT=session-end/" "$SIGNAL_FILE"
-sed -i "s/^MATCH_RATE=.*/MATCH_RATE={실측값}/" "$SIGNAL_FILE"
-sed -i "s/^TEST_RESULT=.*/TEST_RESULT=pass/" "$SIGNAL_FILE"
+SIGNAL_DIR="/tmp/sprint-signals"
+mkdir -p "$SIGNAL_DIR"
+SIGNAL_FILE="${SIGNAL_DIR}/${PROJECT}-${SPRINT_NUM}.signal"
+
+# .sprint-context에서 읽기
+MATCH_RATE=$(grep "^MATCH_RATE=" .sprint-context 2>/dev/null | cut -d= -f2 || echo "")
+TEST_RESULT=$(grep "^TEST_RESULT=" .sprint-context 2>/dev/null | cut -d= -f2 || echo "pass")
+
+# GitHub 정보 수집
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+GITHUB_REPO=$(git remote get-url origin 2>/dev/null | grep -oP '(?<=github.com[:/])[^.]+' || true)
+
+# PR 존재 여부 확인
+if [ -f "${PROJECT_ROOT}/.git/.credentials" ] && [ -z "${GH_TOKEN:-}" ]; then
+  export GH_TOKEN=$(sed 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/' "${PROJECT_ROOT}/.git/.credentials" 2>/dev/null || true)
+fi
+PR_NUM=$(gh pr list --repo "$GITHUB_REPO" --head "sprint/${SPRINT_NUM}" --json number --jq '.[0].number' 2>/dev/null || true)
+
+# PR 없으면 생성
+if [ -z "$PR_NUM" ] && [ -n "$GITHUB_REPO" ]; then
+  COMMIT_SUMMARY=$(git log --oneline master..HEAD 2>/dev/null | head -10)
+  PR_URL=$(gh pr create --repo "$GITHUB_REPO" --base master --head "sprint/${SPRINT_NUM}" \
+    --title "feat: Sprint ${SPRINT_NUM} — ${F_ITEMS}" \
+    --body "## Sprint ${SPRINT_NUM}
+### F-items
+${F_ITEMS}
+
+### Commits
+${COMMIT_SUMMARY}
+
+### Match Rate
+${MATCH_RATE:-N/A}%
+
+---
+🤖 Auto-generated from Sprint autopilot" 2>/dev/null || true)
+  PR_NUM=$(echo "$PR_URL" | grep -oP '\d+$' || true)
+fi
+
+# Signal 파일 작성 (생성 또는 덮어쓰기)
+cat > "$SIGNAL_FILE" <<SIGNAL
+STATUS=DONE
+SPRINT_NUM=${SPRINT_NUM}
+PROJECT=${PROJECT}
+F_ITEMS=${F_ITEMS}
+BRANCH=sprint/${SPRINT_NUM}
+PR_NUM=${PR_NUM:-}
+GITHUB_REPO=${GITHUB_REPO:-}
+PROJECT_ROOT=${PROJECT_ROOT}
+CHECKPOINT=session-end
+ERROR_STEP=
+ERROR_MSG=
+MATCH_RATE=${MATCH_RATE:-}
+TEST_RESULT=${TEST_RESULT:-pass}
+TIMESTAMP=$(date -Iseconds)
+SIGNAL
 ```
+> Signal이 DONE으로 작성되면, Master의 `sprint-merge-monitor.sh`가 자동으로 review→merge→deploy→cleanup을 수행한다.
 
 ## --resume 모드
 
