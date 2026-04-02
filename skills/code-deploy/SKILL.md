@@ -2,9 +2,9 @@
 name: code-deploy
 description: |
   프리뷰 배포 또는 명시적 재배포.
-  프로덕션 배포는 /ax-session-end에 포함되어 있으므로, 이 명령은 --preview 또는 수동 재배포 시 사용.
+  프로덕션 배포는 /ax:session-end에 포함되어 있으므로, 이 명령은 --preview 또는 수동 재배포 시 사용.
   Use when: 프리뷰 배포, 재배포, deploy preview, wrangler deploy, 수동 배포
-argument-hint: "[--preview]"
+argument-hint: "[preview]"
 user-invocable: true
 allowed-tools:
   - Bash

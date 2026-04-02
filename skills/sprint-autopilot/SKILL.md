@@ -3,7 +3,7 @@ name: sprint-autopilot
 description: Sprint WT 전체 자동화 — Plan→Design→Implement→Analyze→Report→Session-End
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill, AskUserQuestion
-argument-hint: "Sprint N F항목들 [--resume] [--dry-run]"
+argument-hint: "<N> [--resume] [--dry-run]"
 ---
 
 # Sprint Autopilot — WT 작업 전체 자동화

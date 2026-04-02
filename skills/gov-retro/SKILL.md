@@ -1,7 +1,7 @@
 ---
 name: gov-retro
 description: "마일스톤 회고 — SemVer Minor 태그 시점에 지표 수집, 회고 작성, CHANGELOG/MEMORY 반영. Use when: 회고, retrospective, 마일스톤, 태그, CHANGELOG 갱신"
-argument-hint: ""
+argument-hint: "[tag]"
 user-invocable: true
 allowed-tools:
   - Read

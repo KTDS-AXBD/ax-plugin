@@ -4,7 +4,7 @@ description: |
   Sprint worktree 오케스트레이션 — Master에서 Sprint 생성/리뷰/머지/정리.
   worktree를 Windows Terminal 독립 탭으로 열고, SPEC.md F-items와 연동.
   Use when: sprint, 스프린트, worktree, 워크트리, 병렬 작업, sprint start, sprint merge
-argument-hint: "<subcommand> [args] — start|review|pr|merge|done|list"
+argument-hint: "<start|merge|pr|review|done|list> [N]"
 user-invocable: true
 allowed-tools:
   - Bash
