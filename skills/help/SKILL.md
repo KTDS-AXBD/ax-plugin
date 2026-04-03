@@ -1,7 +1,7 @@
 ---
 name: help
 description: |
-  ax 스킬셋 사용 가이드 — 21개 스킬의 용도, 서브커맨드, 실전 사례 안내.
+  ax 스킬셋 사용 가이드 — 22개 스킬의 용도, 서브커맨드, 실전 사례 안내.
   Use when: ax help, ax 도움말, 스킬 목록, 사용법, ax commands, 뭐가 있어
 argument-hint: "[스킬명]"
 user-invocable: true
@@ -44,6 +44,7 @@ allowed-tools:
 | 명령 | 용도 | 트리거 |
 |------|------|--------|
 | `/ax-code-verify` | lint + typecheck + test 한번에 | "검증", "test", "lint" |
+| `/ax-e2e-audit` | E2E 실행 + 감사 + 커버리지 매트릭스 | "E2E", "e2e", "playwright" |
 | `/ax-code-deploy` | 프리뷰 배포 또는 수동 재배포 | "배포", "deploy" |
 | `/ax-git-sync` | 멀티 환경 동기화 + ~/.claude 설정 sync | "동기화", "git sync" |
 
