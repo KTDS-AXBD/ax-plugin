@@ -315,6 +315,15 @@ PR을 merge하고 배포까지 진행한다.
 
 7. **MEMORY.md 갱신**: Sprint 완료 기록 + 지표 업데이트
 
+7b. **CLAUDE.md 스킬 테이블 동기화** (session-end Phase 0c 항목 7과 동일):
+   ```bash
+   # Sprint에서 새 project skill이 추가되었을 수 있으므로 동기화
+   ls .claude/skills/ 2>/dev/null
+   ```
+   - CLAUDE.md `.claude/skills/` 섹션과 실제 디렉토리 비교
+   - 누락된 스킬이 있으면 CLAUDE.md에 추가 (description은 SKILL.md frontmatter에서 추출)
+   - 삭제된 스킬은 CLAUDE.md에서 제거
+
 8. **CI/CD 결과 확인 + 헬스체크** (ax-session-end Phase 6과 동일)
 
 ### `done <N>`

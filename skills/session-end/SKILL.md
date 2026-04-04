@@ -312,6 +312,54 @@ fi
 - 숫자/지표만 업데이트 (테스트 수, 빌드 상태 등)
 - 세션 히스토리는 추가하지 않음
 
+**SPEC.md §2 수치 자동 갱신** (Phase 0c 실측값 재활용):
+
+Phase 0c 항목 11~13에서 실측한 routes/services/schemas 수를 SPEC.md §2 테이블에도 반영한다.
+SPEC.md에 `| tests |`, `| API endpoints |`, `| API services |`, `| API schemas |`, `| D1 migrations |` 행이 있을 때만 동작.
+
+```bash
+# 1) API tests 수 실측 (vitest dry-run으로 총 수만 추출)
+API_TEST_DIR=$(find . -path "*/api/src" -type d 2>/dev/null | head -1)
+if [ -n "$API_TEST_DIR" ]; then
+  API_PKG_DIR=$(dirname "$API_TEST_DIR")
+  API_TESTS=$(cd "$API_PKG_DIR" && npx vitest run --reporter=verbose 2>&1 | grep -oP 'Tests\s+.*\((\d+)\)' | grep -oP '\d+(?=\))' | tail -1)
+fi
+
+# 2) CLI tests 수 실측
+CLI_TEST_DIR=$(find . -path "*/cli/src" -type d 2>/dev/null | head -1)
+if [ -n "$CLI_TEST_DIR" ]; then
+  CLI_PKG_DIR=$(dirname "$CLI_TEST_DIR")
+  CLI_TESTS=$(cd "$CLI_PKG_DIR" && npx vitest run --reporter=verbose 2>&1 | grep -oP 'Tests\s+.*\((\d+)\)' | grep -oP '\d+(?=\))' | tail -1)
+fi
+
+# 3) Web tests 수 실측
+WEB_TEST_DIR=$(find . -path "*/web/src" -type d 2>/dev/null | head -1)
+if [ -n "$WEB_TEST_DIR" ]; then
+  WEB_PKG_DIR=$(dirname "$WEB_TEST_DIR")
+  WEB_TESTS=$(cd "$WEB_PKG_DIR" && npx vitest run --reporter=verbose 2>&1 | grep -oP 'Tests\s+.*\((\d+)\)' | grep -oP '\d+(?=\))' | tail -1)
+fi
+
+# 4) Phase 0c에서 실측한 routes/services/schemas 수 재활용
+ROUTES_COUNT=$(ls packages/api/src/routes/*.ts 2>/dev/null | wc -l)
+SERVICES_COUNT=$(ls packages/api/src/services/*.ts 2>/dev/null | wc -l)
+SCHEMAS_COUNT=$(ls packages/api/src/schemas/*.ts 2>/dev/null | wc -l)
+
+# 5) D1 migrations 범위 실측
+MIGRATIONS_DIR=$(find . -path "*/db/migrations" -type d 2>/dev/null | head -1)
+if [ -n "$MIGRATIONS_DIR" ]; then
+  FIRST_MIG=$(ls "$MIGRATIONS_DIR"/*.sql 2>/dev/null | head -1 | xargs basename | grep -oP '^\d+')
+  LAST_MIG=$(ls "$MIGRATIONS_DIR"/*.sql 2>/dev/null | tail -1 | xargs basename | grep -oP '^\d+')
+fi
+```
+
+SPEC.md §2 테이블에서 해당 행을 찾아 실측값으로 교체:
+- `| tests |` → `API **{N}** + CLI **{N}** + Web **{N}** = **{합계}** + E2E ...`
+- `| API endpoints |` → `**~{N}개** ({routes_count} routes)`
+- `| API services |` → `**{N}개**`
+- `| API schemas |` → `**{N}개**`
+- `| D1 migrations |` → `**{first}~{last}**`
+- 값이 SPEC.md 기존값과 동일하면 변경하지 않음 (불필요한 diff 방지)
+
 **CHANGELOG.md** (또는 docs/CHANGELOG.md):
 - 파일 상단에 이번 세션 기록 추가:
 ```markdown
@@ -497,6 +545,10 @@ Auto Memory 디렉토리의 MEMORY.md를 업데이트:
    - Phase 0c 항목 11~13에서 실측한 routes/services/schemas 수를 MEMORY.md 지표에도 동일하게 반영 (단일 소스 원칙)
    - CLAUDE.md와 MEMORY.md 양쪽의 수치가 동일한지 교차 검증
    - 불일치 시 파일시스템 실측값을 기준으로 양쪽 모두 수정
+5c. **SPEC.md §2 ↔ MEMORY.md ↔ CLAUDE.md 3-way 교차 검증**:
+   - Phase 2에서 갱신한 SPEC.md §2 수치(tests/endpoints/services/schemas/D1)와 MEMORY.md "주요 지표", CLAUDE.md 수치를 비교
+   - 3곳 중 불일치가 있으면 **파일시스템 실측값을 기준으로 3곳 모두 동기화**
+   - 동기화 대상: tests 총수, API endpoints (routes 수), services 수, schemas 수, D1 migrations 범위
 6. **[→CLAUDE] 마커 승격**:
    - MEMORY.md에서 `[→CLAUDE]` 마커가 붙은 항목을 검색한다
    - 마커 항목이 프로젝트 CLAUDE.md에 이미 반영됐는지 확인한다
