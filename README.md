@@ -4,7 +4,7 @@ KTDS AX BD팀의 개발 워크플로우를 자동화하는 Claude Code 플러그
 
 ## 구성
 
-- **20개 스킬**: 세션, Sprint, 거버넌스, 요구사항, 코드, 인프라 관리
+- **22개 스킬**: 세션, Sprint, 거버넌스, 요구사항, 코드, 인프라 관리
 - **15개 표준**: GOV-001~015 (문서/버전/리스크/코딩/테스트/보안 등)
 - **2개 규칙**: Agent Team 패턴, 개발 워크플로우
 
@@ -65,12 +65,12 @@ claude plugin list
 
 | 카테고리 | 스킬 | 용도 |
 |----------|------|------|
-| 세션 | `session-start`, `session-end` | 프로젝트 컨텍스트 복원/종료 |
+| 세션 | `session-start`, `daily-check`, `session-end` | 컨텍스트 복원/점검/종료 |
 | 코드 | `code-verify`, `code-deploy` | 검증/배포 |
 | Git | `git-sync`, `git-team`, `sprint`, `sprint-autopilot`, `sprint-pipeline` | 동기화/팀작업/Sprint |
 | 거버넌스 | `gov-doc`, `gov-version`, `gov-risk`, `gov-retro`, `gov-standards` | 문서/버전/리스크/회고/표준 |
 | 요구사항 | `req-manage`, `req-integrity`, `req-interview` | 등록/검증/인터뷰 |
-| 인프라 | `infra-selfcheck`, `infra-statusline`, `help` | 점검/상태표시/가이드 |
+| 인프라 | `infra-selfcheck`, `infra-statusline`, `e2e-audit`, `help` | 점검/E2E/상태표시/가이드 |
 
 ## 표준 (standards/)
 
@@ -83,10 +83,31 @@ claude plugin list
 - `project-governance.md` — 프로젝트 거버넌스
 - 그 외 10개 (coding-convention, test-strategy, security, cicd-pipeline 등)
 
-## 업데이트
+## 버전 관리
+
+### 버전 정책
+
+- **SemVer** (Major.Minor.Patch) — Minor: 스킬 추가/삭제 또는 동작 변경, Patch: 문서/설명 수정
+- **버전 범프 시점**: 스킬 로직이 변경된 커밋을 push할 때 (문서만 수정은 Patch)
+- **스킬 수 하드코딩 금지**: README/CLAUDE.md에 스킬 수를 적지 않고 `ls skills/ | wc -l`로 확인
+
+### 업데이트 흐름
+
+```
+1. marketplace 소스 수정 (skills/*.md)
+2. cache 동기화 (양쪽 버전):
+   cp skills/X/SKILL.md ~/.claude/plugins/cache/ax-marketplace/ax/{version}/skills/X/SKILL.md
+3. git commit + push (ax-plugin repo)
+4. 다른 환경에서: claude plugin update ax@ax-marketplace
+```
+
+### 현재 세션 즉시 반영
+
+Claude Code Skills 2.0은 SKILL.md를 **세션 중 매번 디스크에서 읽어요** (hot reload).
+`cp`로 캐시를 갱신하면 **다음 스킬 호출부터 즉시 반영**돼요.
 
 ```bash
-# 최신 버전으로 업데이트
+# 최신 버전으로 업데이트 (원격에서)
 claude plugin update ax@ax-marketplace
 ```
 

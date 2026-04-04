@@ -25,7 +25,8 @@ allowed-tools:
 | 명령 | 용도 | 트리거 |
 |------|------|--------|
 | `/ax-session-start` | 세션 시작 — 컨텍스트 복원 + F항목 감지 + 정합성 점검 | "시작", "session start" |
-| `/ax-session-end` | 세션 종료 — 커밋 + 문서 갱신 + push + 배포 점검 | "마무리", "끝", "session end" |
+| `/ax-daily-check` | 환경 점검 — 런타임/Git/의존성/TypeScript/Hook/D1/SPEC.md 수치 | "환경 점검", "daily check" |
+| `/ax-session-end` | 세션 종료 — 수치 동기화 + 커밋 + 문서 갱신 + push + 배포 점검 | "마무리", "끝", "session end" |
 
 ### 🌳 Sprint & 병렬 작업
 | 명령 | 용도 | 트리거 |
