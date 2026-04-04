@@ -180,7 +180,55 @@ git log --oneline -3
 **F항목이 감지되지 않은 경우:**
 - MEMORY.md의 "다음 작업" 항목을 기반으로 제안
 
-### 5. 작업 계획 수립
+### 5. 작업 계획 수립 + Sprint Full Auto 위임
+
+**Sprint 패턴 감지** (`$ARGUMENTS`에 `/sprint N` 또는 `sprint N` 포함 시):
+
+`$ARGUMENTS`에서 Sprint 번호를 추출한다:
+```bash
+SPRINT_NUM=$(echo "$ARGUMENTS" | grep -oP '(?:sprint\s+|/sprint\s+)(\d+)' | grep -oP '\d+')
+```
+
+Sprint 번호가 감지되면 **사용자 확인 없이 자동으로 Full Auto 프로세스를 실행**한다:
+
+1. Step 4에서 감지한 F항목의 SPEC 상태 전환이 완료된 상태
+2. SPEC 변경사항을 커밋 + push (WT 생성 전 필수 — S149 교훈):
+   ```bash
+   git add SPEC.md && git commit -m "chore: F{N} IN_PROGRESS — Sprint $SPRINT_NUM 착수"
+   git push origin master
+   ```
+3. WT 생성 (bash sprint 함수 필수):
+   ```bash
+   bash -i -c "sprint $SPRINT_NUM"
+   ```
+4. Autopilot 자동 주입:
+   ```bash
+   TMUX_SESSION="sprint-${PROJECT}-${SPRINT_NUM}"
+   tmux send-keys -t "$TMUX_SESSION" "ccs" Enter
+   sleep 8
+   tmux send-keys -t "$TMUX_SESSION" "/ax:sprint-autopilot" Enter
+   ```
+5. 모니터링 안내:
+   ```
+   ## Sprint $SPRINT_NUM Full Auto 시작
+
+   | 항목 | 값 |
+   |------|-----|
+   | Branch | sprint/$SPRINT_NUM |
+   | F-items | F{N} |
+   | Autopilot | ✅ 주입 완료 |
+   
+   진행 확인: `/ax:sprint monitor $SPRINT_NUM`
+   Master 세션에서 다른 작업 가능. 완료 시 `/ax:sprint merge $SPRINT_NUM`
+   ```
+6. 이후 주기적 모니터링 (2분 간격):
+   ```bash
+   tmux capture-pane -t "$TMUX_SESSION" -p -S -30
+   ```
+
+> **`--manual` 플래그**: `$ARGUMENTS`에 `--manual`이 포함되면 Phase 4 autopilot 주입을 건너뛰고, WT 생성 + 세션 안내만 출력. 사용자가 직접 WT 탭에서 작업.
+
+**Sprint 패턴이 없는 경우** (기존 동작):
 
 `$ARGUMENTS`에 오늘 작업이 명시되어 있으면:
 - 관련 파일/모듈 탐색
