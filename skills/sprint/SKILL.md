@@ -331,11 +331,15 @@ PR을 merge하고 배포까지 진행한다.
 
 7. **MEMORY.md 갱신**: Sprint 완료 기록 + 지표 업데이트
 
-7b. **CLAUDE.md 스킬 테이블 동기화** (session-end Phase 0c 항목 7과 동일):
+7b. **CLAUDE.md 헤더 + 스킬 테이블 동기화**:
    ```bash
-   # Sprint에서 새 project skill이 추가되었을 수 있으므로 동기화
+   # 1) 헤더 동기화 — SPEC.md 기반으로 "현재 상태" + Phase 상태 자동 갱신
+   bash scripts/sync-claude-md.sh
+   
+   # 2) 스킬 테이블 동기화 (session-end Phase 0c 항목 7과 동일)
    ls .claude/skills/ 2>/dev/null
    ```
+   - `sync-claude-md.sh`: SPEC.md에서 최신 Phase/Sprint/F-range 추출 → CLAUDE.md "현재 상태" 줄 + "Phase N" 줄 갱신
    - CLAUDE.md `.claude/skills/` 섹션과 실제 디렉토리 비교
    - 누락된 스킬이 있으면 CLAUDE.md에 추가 (description은 SKILL.md frontmatter에서 추출)
    - 삭제된 스킬은 CLAUDE.md에서 제거
