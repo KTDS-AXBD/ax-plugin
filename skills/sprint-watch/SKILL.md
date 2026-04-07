@@ -167,6 +167,64 @@ echo "GIST_FILE=sprint-monitor.md" >> .sprint-watch-config
 echo "INTERVAL=300" >> .sprint-watch-config
 ```
 
+## Auto-Approve (권한 프롬프트 자동 승인)
+
+Sprint WT에서 발생하는 권한 프롬프트를 Master가 자동으로 승인한다.
+`start` 시 auto-approve 프로세스가 함께 시작되고, `stop` 시 함께 종료된다.
+
+### 감지 패턴 + 자동 응답
+
+| 패턴 | 감지 문자열 | 자동 응답 | 설명 |
+|------|-----------|----------|------|
+| 권한 선택 | `Allow once`, `Allow for this`, `Permission required` | `2` + Enter | "세션 전체 허용" 선택 |
+| y/n 확인 | `Do you want`, `proceed?`, `continue?` | `y` + Enter | 승인 |
+| bypass off | `bypass permissions off` | Shift+Tab | bypass on으로 전환 |
+
+### 실행 방식
+
+`start` 시 자동으로 background에서 실행:
+```bash
+nohup bash ~/scripts/sprint-auto-approve.sh 10 120 \
+  > /tmp/sprint-signals/auto-approve.log 2>&1 & disown
+```
+
+- **10초 간격**으로 모든 활성 Sprint tmux pane을 캡처
+- 권한 프롬프트 패턴 감지 시 즉시 자동 응답 전송
+- 최대 **120분** 동작 (Sprint 완료까지 충분)
+- `AskUserQuestion` 프롬프트는 자동 승인 **안 함** (사용자 판단 필요)
+
+### 수동 실행
+
+```bash
+# Master에서 수동으로 auto-approve 시작
+nohup bash ~/scripts/sprint-auto-approve.sh 10 120 \
+  > /tmp/sprint-signals/auto-approve.log 2>&1 & disown
+
+# 로그 확인
+tail -f /tmp/sprint-signals/auto-approve.log
+
+# 중단
+pkill -f sprint-auto-approve
+```
+
+### `start` 통합
+
+`start` 서브커맨드 실행 시 Phase 5 이후에 자동으로 실행:
+
+```bash
+# Phase 5c: Auto-Approve 시작
+nohup bash ~/scripts/sprint-auto-approve.sh 10 120 \
+  > /tmp/sprint-signals/auto-approve.log 2>&1 & disown
+echo "✅ auto-approve PID: $!"
+```
+
+### Gist 표시
+
+`once` 갱신 시 auto-approve 상태도 표시:
+```markdown
+> Auto-Approve: {N}개 가동 | 승인 건수: {M}
+```
+
 ## Gotchas
 
 - `gh` CLI 인증 필요 — `gh auth status`로 확인
@@ -174,3 +232,5 @@ echo "INTERVAL=300" >> .sprint-watch-config
 - tmux 캡처는 현재 WSL 호스트에서만 가능 — 원격 서버 Sprint는 signal 파일 기반으로만 수집
 - `/loop` 스킬이 없으면 수동으로 `/ax:sprint-watch once`를 반복 호출
 - Gist는 public — 민감 정보(API 키 등)를 포함하지 않도록 주의
+- Auto-approve는 `AskUserQuestion` 프롬프트를 자동 승인하지 않음 — 의도적 설계 (사용자 판단 보호)
+- `ccs` (skip-permissions) 모드에서는 대부분 프롬프트가 발생하지 않지만, settings.json 수정 등 특수 상황에서 발생 가능
