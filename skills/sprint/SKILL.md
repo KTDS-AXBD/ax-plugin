@@ -4,7 +4,7 @@ description: |
   Sprint worktree Full Auto 오케스트레이션 — start 한 번으로 WT 생성→autopilot→모니터링→merge까지.
   worktree를 Windows Terminal 독립 탭으로 열고, SPEC.md F-items와 연동.
   Use when: sprint, 스프린트, worktree, 워크트리, 병렬 작업, sprint start, sprint merge
-argument-hint: "<start|merge|pr|review|done|list|monitor> [N] [--manual]"
+argument-hint: "<start|merge|pr|review|done|list|monitor|clean> [N] [--manual|--team|--single]"
 user-invocable: true
 allowed-tools:
   - Bash
@@ -77,14 +77,15 @@ bash -i -c "sprint $N"
 **Phase 3: Autopilot 주입** (`--manual` 미지정 시 자동):
 ```bash
 TMUX_SESSION="sprint-${PROJECT}-${N}"
-# Claude 시작
-tmux send-keys -t "$TMUX_SESSION" "bash -ic 'ccs'" Enter
+# Claude 시작 (WT는 Sonnet 모델 사용 — 비용 효율 + Master Opus와 역할 분리)
+tmux send-keys -t "$TMUX_SESSION" "bash -ic 'ccs --model sonnet'" Enter
 # Claude 기동 대기 (TUI 렌더링까지)
 sleep 10
 # Autopilot 명령 전송
 tmux send-keys -t "$TMUX_SESSION" "/ax:sprint-autopilot" Enter
 ```
 **주의**: `claude -p` 또는 `echo | claude` 파이프 모드는 TUI가 보이지 않으므로 금지.
+**모델**: WT는 `--model sonnet` (Sonnet 4.6), Master는 기본 Opus. `--model opus`로 오버라이드 가능.
 
 **Phase 4: Signal 초기화 + Status Monitor 시작**:
 ```bash
@@ -144,10 +145,23 @@ Master 세션은 다른 작업을 진행할 수 있어요.
 진행 확인: `/ax:sprint monitor $N`
 ```
 
+**`--team` 모드**: Phase 3에서 autopilot 대신 `/pdca team {feature}`를 주입. Agent Team 3인(developer+frontend+qa)이 병렬 구현.
+> **자동 판정**: `--team`/`--single` 미지정 시, F-item의 변경 영역을 분석하여 자동 권장:
+> - **Team 권장**: api/ + web/ 동시 수정 (서로 다른 패키지 병렬 가능)
+> - **단일 권장**: 신규 모듈 생성(Foundation), 단일 패키지 집중, shared/ 동시 수정 위험
+> - 판정 기준: Design 문서의 구현 순서(§9/§11)에서 변경 대상 패키지를 추출하여 교차 여부 확인
+>
+> | Sprint 유형 | 판정 | 이유 |
+> |-------------|------|------|
+> | Foundation (신규 모듈) | 단일 | 설계 일관성 중요, 파일 생성만 |
+> | API + UI 통합 (다른 패키지) | **Team** | developer(api/) + frontend(web/) 병렬 ~40% 절감 |
+> | 단일 패키지 집중 | 단일 | 같은 파일 충돌 위험 |
+> | 테스트 + 리팩토링 | **Team** | qa 테스트 + developer 수정 병렬 |
+
 **`--manual` 모드**: Phase 3~5를 건너뜀. WT 생성 + SPEC 연동만 수행.
 ```
 ### Sprint 탭에서 수동 진행
-1. `ccs` 실행
+1. `ccs --model sonnet` 실행 (또는 `ccs --model opus`로 오버라이드)
 2. `/ax:sprint-autopilot` 또는 직접 작업
 3. 완료 후 Master에서 `/ax:sprint review $N` → `/ax:sprint merge $N`
 ```
@@ -328,6 +342,11 @@ PR을 merge하고 배포까지 진행한다.
 
 8. **CI/CD 결과 확인 + 헬스체크** (ax-session-end Phase 6과 동일)
 
+9. **Sprint clean (자동)**: `clean --quiet` 동일 로직 실행
+   - merge 완료된 해당 Sprint의 WT/브랜치/remote ref/signal 정리
+   - 추가로 과거 Sprint의 고아 리소스도 일괄 점검
+   - 정리 건수 0이면 생략, 1건 이상이면 한 줄 요약 출력
+
 ### `done <N>`
 
 Sprint worktree와 브랜치를 정리한다.
@@ -339,6 +358,150 @@ Sprint worktree와 브랜치를 정리한다.
 4. **리모트 브랜치 삭제**: `git push origin --delete sprint/$N`
 5. **tmux 세션 종료**: `tmux kill-session -t sprint-${PROJECT}-${N}`
 6. **Signal 파일 정리**: `/tmp/sprint-signals/${PROJECT}-${N}.signal` 삭제
+7. **전체 고아 점검 (자동)**: `clean --quiet` 동일 로직 실행 — 고아 WT/브랜치/ref 일괄 정리
+
+### `clean [--dry-run]`
+
+전체 Sprint 고아 리소스를 점검하고 정리한다.
+> merge-monitor 실패, 수동 정리 누락 등으로 누적된 고아 리소스를 일괄 처리한다.
+
+**`--dry-run`**: 실제 삭제 없이 점검 결과만 출력.
+
+**Phase 0: 활성 Sprint 보호 목록 구축 (삭제 방어)**
+> ⚠️ **핵심 방어**: 다른 pane/세션에서 사용 중인 Sprint를 절대 삭제하지 않는다.
+
+```bash
+PROJECT=$(basename "$(git rev-parse --show-toplevel)")
+
+# 방어 1: 활성 WT 목록 (git worktree list에 있으면 WT 디렉토리 존재)
+PROTECTED_BRANCHES=""
+while IFS= read -r line; do
+  BRANCH=$(echo "$line" | awk '{print $3}' | tr -d '[]')
+  if echo "$BRANCH" | grep -q "^sprint/"; then
+    PROTECTED_BRANCHES="$PROTECTED_BRANCHES $BRANCH"
+  fi
+done < <(git worktree list)
+
+# 방어 2: 활성 tmux 세션 확인 (WT가 없어도 tmux에 살아 있으면 보호)
+TMUX_SESSIONS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^sprint-${PROJECT}-" || true)
+for SESS in $TMUX_SESSIONS; do
+  # sprint-Foundry-X-150 → sprint/150 추출
+  SPRINT_NUM=$(echo "$SESS" | sed "s/sprint-${PROJECT}-//")
+  PROTECTED_BRANCHES="$PROTECTED_BRANCHES sprint/$SPRINT_NUM"
+done
+
+# 방어 3: signal 파일에서 IN_PROGRESS 상태인 Sprint 보호
+SIGNAL_DIR="/tmp/sprint-signals"
+if [ -d "$SIGNAL_DIR" ]; then
+  for SIGNAL in "$SIGNAL_DIR"/*.signal; do
+    [ -f "$SIGNAL" ] || continue
+    SIG_STATUS=$(grep "^STATUS=" "$SIGNAL" | cut -d= -f2)
+    if [ "$SIG_STATUS" = "IN_PROGRESS" ] || [ "$SIG_STATUS" = "CREATED" ]; then
+      SIG_NUM=$(grep "^SPRINT_NUM=" "$SIGNAL" | cut -d= -f2)
+      PROTECTED_BRANCHES="$PROTECTED_BRANCHES sprint/$SIG_NUM"
+    fi
+  done
+fi
+
+# 중복 제거 + 정렬
+PROTECTED_BRANCHES=$(echo "$PROTECTED_BRANCHES" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+echo "🛡️ 보호 대상: $PROTECTED_BRANCHES"
+```
+
+**is_protected() 헬퍼**: 이후 모든 Phase에서 삭제 전 호출
+```bash
+is_protected() {
+  local TARGET="$1"
+  for P in $PROTECTED_BRANCHES; do
+    [ "$P" = "$TARGET" ] && return 0  # 보호됨 → 삭제 금지
+  done
+  return 1  # 보호 안 됨 → 삭제 가능
+}
+```
+
+**Phase 1: 고아 Worktree 점검 + prune**
+```bash
+# 1a. git worktree prune (디렉토리가 이미 사라진 WT 참조만 정리 — 안전)
+git worktree prune --dry-run  # 먼저 확인
+git worktree prune            # 실행 (--dry-run이 아니면)
+# ※ prune은 디렉토리가 실재하는 WT는 건드리지 않으므로 활성 WT에 안전
+```
+
+**Phase 2: 고아 로컬 브랜치 정리**
+```bash
+# master에 merge 완료된 sprint/* 브랜치 수집
+# ※ git branch 출력에서 현재 브랜치 표시(* +)와 공백을 제거
+MERGED_BRANCHES=$(git branch --merged master --list "sprint/*" | sed 's/^[* +]*//' | tr -d ' ')
+
+for BRANCH in $MERGED_BRANCHES; do
+  # sprint/로 시작하지 않으면 무시 (잔여 마커 방어)
+  echo "$BRANCH" | grep -q "^sprint/" || continue
+  # ⚠️ 보호 대상이면 건너뜀
+  if is_protected "$BRANCH"; then
+    echo "🛡️ Skip (protected): $BRANCH"
+    continue
+  fi
+  echo "Deleting merged branch: $BRANCH"
+  git branch -d "$BRANCH"  # --dry-run이면 echo만
+done
+
+# master에 merge 안 된 오래된 sprint/* 브랜치도 감지 (삭제는 않고 경고)
+UNMERGED=$(git branch --no-merged master --list "sprint/*" | sed 's/^[* +]*//' | tr -d ' ')
+for BRANCH in $UNMERGED; do
+  echo "$BRANCH" | grep -q "^sprint/" || continue
+  if is_protected "$BRANCH"; then
+    continue  # 활성 Sprint는 미merge가 정상
+  fi
+  echo "⚠️ 미merge 고아 브랜치 (수동 확인 필요): $BRANCH"
+done
+```
+
+**Phase 3: Remote tracking ref 정리**
+```bash
+# GitHub에서 삭제된 remote 브랜치의 로컬 tracking ref 정리
+git remote prune origin --dry-run  # 먼저 확인
+git remote prune origin            # 실행 (--dry-run이 아니면)
+# ※ remote prune은 로컬 WT/브랜치를 건드리지 않으므로 안전
+```
+
+**Phase 4: Signal 파일 정리**
+```bash
+SIGNAL_DIR="/tmp/sprint-signals"
+if [ -d "$SIGNAL_DIR" ]; then
+  for SIGNAL in "$SIGNAL_DIR"/*.signal; do
+    [ -f "$SIGNAL" ] || continue
+    SIG_NUM=$(grep "^SPRINT_NUM=" "$SIGNAL" | cut -d= -f2)
+    # ⚠️ 보호 대상이면 건너뜀
+    if is_protected "sprint/$SIG_NUM"; then
+      continue
+    fi
+    # 활성 WT에 해당 Sprint가 없으면 정리
+    if ! git worktree list | grep -q "sprint-${SIG_NUM}"; then
+      echo "Removing stale signal: $SIGNAL"
+      rm "$SIGNAL"  # --dry-run이면 echo만
+    fi
+  done
+fi
+```
+
+**Phase 5: 결과 리포트**
+```
+## Sprint Clean 결과
+
+| 항목 | 정리 수 |
+|------|---------|
+| 고아 WT prune | N건 |
+| merged 로컬 브랜치 삭제 | N건 |
+| remote tracking ref prune | N건 |
+| 고아 signal 삭제 | N건 |
+| ⚠️ 미merge 브랜치 (수동) | N건 |
+
+활성 Sprint: sprint/150 (유지)
+```
+
+**`--quiet` 모드** (done/merge에서 자동 호출 시):
+- Phase 1~4 동일하게 실행하되, 정리 건수가 0이면 출력 생략
+- 1건 이상 정리 시 한 줄 요약만: `🧹 Sprint clean: N건 정리 (브랜치 X, ref Y, signal Z)`
 
 ## 전체 프로세스 요약
 
@@ -351,6 +514,11 @@ Manual (--manual):
   /ax:sprint start N FX --manual
   → WT에서 수동 작업
   → /ax:sprint review N → /ax:sprint pr N → /ax:sprint merge N → /ax:sprint done N
+
+고아 정리 (주기적 또는 수동):
+  /ax:sprint clean            → 전체 고아 리소스 점검 + 정리
+  /ax:sprint clean --dry-run  → 점검만 (삭제 없이)
+  * done/merge 완료 시 clean --quiet 자동 실행
 ```
 
 ## Gotchas
@@ -362,3 +530,4 @@ Manual (--manual):
 - 여러 Sprint를 동시에 열 수 있지만, 같은 파일을 수정하면 merge 시 충돌 가능
 - merge-monitor는 D1/deploy를 자동 실행하므로 **WSL에서 wrangler 금지** 설정과 충돌 가능 — 프로젝트에 wrangler.toml이 없으면 D1/deploy 단계는 자동 스킵됨
 - `ccs` vs `ccw`: ccs는 skip-perms 모드. autopilot에서 signal을 직접 생성하므로 ccw의 post-session 불필요
+- **WT 모델**: 기본 Sonnet (`ccs --model sonnet`). Master=Opus, WT=Sonnet으로 역할 분리. 복잡한 Sprint는 `--model opus`로 오버라이드 가능
