@@ -87,14 +87,14 @@ tmux send-keys -t "$TMUX_SESSION" "/ax:sprint-autopilot" Enter
 **주의**: `claude -p` 또는 `echo | claude` 파이프 모드는 TUI가 보이지 않으므로 금지.
 **모델**: WT는 `--model sonnet` (Sonnet 4.6), Master는 기본 Opus. `--model opus`로 오버라이드 가능.
 
-**Phase 4: Signal 초기화 + Status Monitor 시작**:
+**Phase 4: Signal 초기화**:
 ```bash
 # Signal 디렉토리 준비
 SIGNAL_DIR="/tmp/sprint-signals"
 mkdir -p "$SIGNAL_DIR"
 SIGNAL_FILE="${SIGNAL_DIR}/${PROJECT}-${N}.signal"
 
-# 초기 signal 생성 (autopilot이 갱신할 기반)
+# 초기 signal 생성 — 모든 필드를 포함해야 merge-monitor가 crash하지 않음
 cat > "$SIGNAL_FILE" <<SIGNAL
 STATUS=CREATED
 SPRINT_NUM=$N
@@ -111,15 +111,33 @@ MATCH_RATE=
 TEST_RESULT=
 TIMESTAMP=$(date -Iseconds)
 SIGNAL
-
-# Status monitor background 실행 (진행 현황 폴링)
-bash ~/scripts/sprint-status-monitor.sh 45 60 &
 ```
 
-**Phase 5: Merge Monitor 시작** (background):
+**Phase 5: Merge Monitor 시작** (background, **별도 Bash tool 호출 필수**):
+
+> ⚠️ **중요: merge-monitor와 status-monitor는 반드시 별도의 `run_in_background` Bash 호출로 실행한다.**
+> 하나의 Bash 호출에 `&`로 묶으면 부모 프로세스 종료 시 자식도 함께 종료될 수 있다.
+> `nohup` + `disown`으로 프로세스를 완전 분리한다.
+
+**merge-monitor** (Bash tool, `run_in_background: true`):
 ```bash
-# Merge monitor background 실행 (signal DONE 감지 → 자동 merge pipeline)
-bash ~/scripts/sprint-merge-monitor.sh &
+nohup bash ~/scripts/sprint-merge-monitor.sh > /tmp/sprint-signals/merge-monitor-${N}.log 2>&1 &
+disown
+echo "✅ merge-monitor PID: $!"
+```
+
+**status-monitor** (Bash tool, `run_in_background: true`):
+```bash
+nohup bash ~/scripts/sprint-status-monitor.sh 45 60 > /tmp/sprint-signals/status-monitor-${N}.log 2>&1 &
+disown
+echo "✅ status-monitor PID: $!"
+```
+
+**Phase 5b: Monitor 생존 확인** (Phase 5 직후):
+```bash
+sleep 2
+ps aux | grep -E "sprint-merge-monitor|sprint-status-monitor" | grep -v grep | wc -l
+# 2 이상이면 정상. 0이면 재시작 필요
 ```
 > merge-monitor는 signal 파일에서 STATUS=DONE을 감지하면:
 > review → PR merge → D1 migration → Workers deploy → health check → WT cleanup 자동 수행

@@ -122,7 +122,9 @@ git push -u origin sprint/{N}
 `.sprint-context`에 `CHECKPOINT=session-end` 기록
 
 **Signal 생성/갱신** (Master merge-monitor가 감지할 signal):
-> ccw/ccs 모드 무관하게 autopilot이 직접 signal을 생성한다. 이것이 Full Auto 프로세스의 핵심 연결 고리.
+> ⚠️ **이 단계는 절대 생략하지 않는다.** Signal STATUS=DONE 작성이 Full Auto 프로세스의 핵심 연결 고리.
+> session-end 성공/실패와 무관하게, push 완료 후 반드시 아래 bash를 실행한다.
+> Signal이 없으면 Master가 Sprint 완료를 감지할 수 없어 수동 merge가 필요해진다.
 
 ```bash
 SIGNAL_DIR="/tmp/sprint-signals"
