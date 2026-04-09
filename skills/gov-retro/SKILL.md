@@ -88,7 +88,76 @@ CHANGELOG.md에 회고 섹션을 추가한다:
 - MEMORY.md "주요 지표" 섹션을 갱신한다.
 - 핵심 교훈이 있으면 MEMORY.md에 반영한다.
 
-### 7. 결과 출력
+### 7. Phase F-items 소급 GitHub Issue 등록 (F489, 선택)
+
+Phase 단위 회고일 경우 해당 Phase의 미등록 F-items를 일괄 GitHub Issue로 소급 등록한다.
+req-integrity의 *구조적 공백* 카테고리를 점진적으로 해소하는 루틴이다.
+
+**발동 조건:**
+- 사용자가 Phase 완료 회고를 수행 중일 때 (예: `/ax:gov-retro phase-27`)
+- `gh` CLI + `GITHUB_REPO` 존재
+- Phase 역순 원칙 (최신 Phase부터 소급) — Issues 인플레이션 통제
+
+**절차:**
+
+1. 대상 Phase의 F-items를 SPEC.md §5에서 수집한다:
+   ```bash
+   PHASE_NUM="{phase}"
+   PHASE_F_ITEMS=$(grep -E "^\| F[0-9]+ \|" SPEC.md | awk -F'|' -v p="Phase ${PHASE_NUM}:" '
+     /Phase [0-9]+:/ { cur=$0 }
+     { if (cur ~ p) print $2 }' | grep -oE 'F[0-9]+' | sort -u)
+   ```
+
+2. 각 F-item의 GitHub Issue 존재 여부를 확인한다 (`[F{N}]` 제목 패턴):
+   ```bash
+   for F in $PHASE_F_ITEMS; do
+     EXISTS=$(gh issue list --repo "$GITHUB_REPO" --state all \
+       --search "${F} in:title" --json number --jq '.[0].number' 2>/dev/null)
+     [ -z "$EXISTS" ] && MISSING="$MISSING $F"
+   done
+   ```
+
+3. 누락 F-items를 사용자에게 표시하고 AskUserQuestion으로 확인:
+   - 전체 등록 / 선별 등록 / 건너뛰기
+
+4. 배치 등록 (배치 크기 10건, 과도한 인플레이션 방지):
+   ```bash
+   for F in $MISSING; do
+     TITLE=$(grep -oP "\| ${F} \| \K[^(]+" SPEC.md | head -1 | sed 's/ *$//')
+     REQ=$(grep -oP "\| ${F} \|.*?\K(FX|DX)-REQ-[0-9]+" SPEC.md | head -1)
+     PRIO=$(grep -oP "\| ${F} \|.*?\KP[0-3]" SPEC.md | head -1)
+     STATUS=$(grep "^\| ${F} \|" SPEC.md | awk -F'|' '{print $5}' | tr -d ' ')
+     # 이미 완료된 F는 Closed 상태로 등록
+     gh issue create --repo "$GITHUB_REPO" \
+       --title "[${F}] ${TITLE}" \
+       --label "enhancement" \
+       --body "**REQ**: ${REQ} | **Priority**: ${PRIO} | **Status**: ${STATUS}
+
+소급 등록 (Phase ${PHASE_NUM} 회고 시점)
+
+🤖 via /ax:gov-retro F489 routine"
+     # ✅ 상태면 즉시 close
+     if [ "$STATUS" = "✅" ]; then
+       LAST_URL=$(gh issue list --repo "$GITHUB_REPO" --search "${F} in:title" --json url --jq '.[0].url')
+       LAST_NUM=$(echo "$LAST_URL" | grep -oP '\d+$')
+       gh issue close "$LAST_NUM" --repo "$GITHUB_REPO" --comment "소급 등록 — 이미 완료된 F-item" 2>/dev/null
+     fi
+     sleep 1  # rate limit 완화
+   done
+   ```
+
+5. 등록 결과를 회고 문서에 기록:
+   ```markdown
+   ### 소급 Issue 등록 (F489)
+   - Phase ${PHASE_NUM}: N건 등록, M건 완료(closed)
+   - 구조적 공백 해소: 이전 K건 → 현재 (K-N)건
+   ```
+
+**중단/재개:**
+- Ctrl+C 중단 시 마지막 등록된 F번호를 `/tmp/gov-retro-backfill-state` 에 저장
+- 재실행 시 해당 번호 이후부터 이어서 등록
+
+### 8. 결과 출력
 
 회고 요약을 출력하고, 태그 생성 여부를 확인한다:
 ```bash
@@ -100,4 +169,7 @@ git tag -a v{version} -m "마일스톤: {한줄 요약}"
 
 ## Gotchas
 
-- TODO: 이 스킬 사용 시 주의사항을 작성하세요
+- **Phase 역순 원칙**: 오래된 Phase부터 등록하면 Issues 번호가 "미래 F"를 앞서 차지해요. 반드시 **최신 Phase부터 역순**으로 진행하세요.
+- **배치 크기 제한**: 한 번에 10건 이상 등록하지 마세요 (GitHub API rate limit + Project 인플레이션).
+- **상태 동기화**: 이미 완료(✅)된 F-item은 Issue 생성 직후 close 해야 "미해결 이슈" 카운트가 오염되지 않아요.
+- **F489 자체는 P2**: 이 루틴은 *회고 시에만* 선택적으로 실행. 일반 `/ax:gov-retro` 흐름을 방해하지 않도록 Step 7을 AskUserQuestion으로 확인 후 진입합니다.

@@ -125,12 +125,27 @@ set_project_select_field() {
 
 ### `/ax-req-manage new` — 새 요구사항 등록
 
+> **β 스마트 기본값**: GitHub Issue를 자동 생성합니다.
+> - gh CLI + remote 존재 시 → 자동 Issue 생성
+> - gh 없거나 remote 없음 → `/tmp/req-issue-skip.log` 경고 기록
+> - 생성 건너뛰려면 → `--no-issue` 플래그 사용
+
+**`--no-issue` 플래그 감지 (Step 0):**
+```bash
+ARGS="${ARGUMENTS:-}"
+NO_ISSUE=false
+if echo "$ARGS" | grep -q -- "--no-issue"; then
+  NO_ISSUE=true
+fi
+```
+
 1. AskUserQuestion으로 다음 정보를 수집한다:
    - 제목 (자유 입력)
    - 유형: Feature / Bug / Improvement / Chore
    - 도메인: 프로젝트의 도메인 목록에서 선택 (SPEC.md 참조)
    - 우선순위: P0(즉시) / P1(이번 마일스톤) / P2(다음) / P3(백로그)
    - 설명 (선택, 자유 입력)
+   - ℹ️ GitHub Issue가 자동 생성됩니다. 건너뛰려면 `--no-issue` 옵션을 사용하세요.
 
 2. SPEC.md의 "미래 작업" 섹션에서 마지막 F번호를 확인하고 다음 번호를 부여한다.
 
@@ -152,14 +167,31 @@ set_project_select_field() {
    - db-name: wrangler.toml의 database_name
    - owner-user-id: 프로덕션 DB에서 admin 사용자 ID 조회
 
-6. **GitHub Issue 생성** (gh CLI + GitHub remote 존재 시):
+6. **GitHub Issue 생성** (스마트 기본값 β — `--no-issue`로 opt-out 가능):
    ```bash
-   if [ "$GH_AVAILABLE" = "true" ] && [ -n "$GITHUB_REPO" ]; then
+   ISSUE_URL=""
+   ISSUE_STATUS_MSG=""
+   if [ "${NO_ISSUE:-false}" = "true" ]; then
+     # --no-issue opt-out
+     ISSUE_STATUS_MSG="ℹ️ --no-issue 옵션: Issue 생성 건너뜀"
+   elif [ "$GH_AVAILABLE" = "true" ] && [ -n "$GITHUB_REPO" ]; then
+     # gh CLI + remote 존재 → 자동 Issue 생성
      ISSUE_URL=$(gh issue create --repo "$GITHUB_REPO" \
        --title "[F{N}] {제목}" \
        --label "{type_label},{priority_label}" \
        --body "**REQ**: {REQ코드} | **Priority**: {P-level} | **Sprint**: v{next}\n\n{설명}" \
        2>/dev/null)
+     if [ -n "$ISSUE_URL" ]; then
+       ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oP '\d+$')
+       ISSUE_STATUS_MSG="✅ #${ISSUE_NUM}"
+     else
+       ISSUE_STATUS_MSG="⚠️ Issue 생성 실패 (gh 오류)"
+     fi
+   else
+     # gh 없거나 remote 없음 → skip.log 기록
+     mkdir -p /tmp
+     echo "[$(date -Iseconds)] SKIP Issue 생성 — gh CLI 없음 또는 GITHUB_REPO 미설정. F{N}: {제목}" >> /tmp/req-issue-skip.log
+     ISSUE_STATUS_MSG="⚠️ Issue 생성 건너뜀 (gh CLI 없음 또는 remote 미설정). /tmp/req-issue-skip.log 참조"
    fi
    ```
    - label 매핑: Feature→feature, Bug→bug, Improvement→enhancement, Chore→chore, P0→P0-critical, P1→P1-high
@@ -196,9 +228,10 @@ set_project_select_field() {
    - SPEC.md: ✅ 추가
    - MEMORY.md: ✅ (P0/P1) / ⏭️ (P2/P3)
    - 앱 DB: ✅ / ⏭️
-   - GitHub Issue: ✅ #{issue_num}
-   - GitHub Project: ✅ Status=Todo, Priority={P-level}, WorkType={type}
+   - GitHub Issue: {ISSUE_STATUS_MSG}
+   - GitHub Project: ✅ Status=Todo, Priority={P-level}, WorkType={type} / ⏭️ (Issue 없음)
    ```
+   > `{ISSUE_STATUS_MSG}` 값: `✅ #NNN` | `⚠️ 건너뜀 (/tmp/req-issue-skip.log)` | `ℹ️ --no-issue`
 
 ### `/ax-req-manage triage` — 미분류 요구사항 분류
 
