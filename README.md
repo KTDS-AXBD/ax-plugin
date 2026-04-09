@@ -4,7 +4,7 @@ KTDS AX BD팀의 개발 워크플로우를 자동화하는 Claude Code 플러그
 
 ## 구성
 
-- **22개 스킬**: 세션, Sprint, 거버넌스, 요구사항, 코드, 인프라 관리
+- **23개 스킬**: 세션, Sprint, 거버넌스, 요구사항, 코드, 인프라 관리
 - **15개 표준**: GOV-001~015 (문서/버전/리스크/코딩/테스트/보안 등)
 - **2개 규칙**: Agent Team 패턴, 개발 워크플로우
 
@@ -67,7 +67,7 @@ claude plugin list
 |----------|------|------|
 | 세션 | `session-start`, `daily-check`, `session-end` | 컨텍스트 복원/점검/종료 |
 | 코드 | `code-verify`, `code-deploy` | 검증/배포 |
-| Git | `git-sync`, `git-team`, `sprint`, `sprint-autopilot`, `sprint-pipeline` | 동기화/팀작업/Sprint |
+| Git | `git-sync`, `git-team`, `sprint`, `sprint-autopilot`, `sprint-pipeline`, `sprint-watch` | 동기화/팀작업/Sprint |
 | 거버넌스 | `gov-doc`, `gov-version`, `gov-risk`, `gov-retro`, `gov-standards` | 문서/버전/리스크/회고/표준 |
 | 요구사항 | `req-manage`, `req-integrity`, `req-interview` | 등록/검증/인터뷰 |
 | 인프라 | `infra-selfcheck`, `infra-statusline`, `e2e-audit`, `help` | 점검/E2E/상태표시/가이드 |

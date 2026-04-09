@@ -1,7 +1,7 @@
 ---
 name: help
 description: |
-  ax 스킬셋 사용 가이드 — 22개 스킬의 용도, 서브커맨드, 실전 사례 안내.
+  ax 스킬셋 사용 가이드 — 23개 스킬의 용도, 서브커맨드, 실전 사례 안내.
   Use when: ax help, ax 도움말, 스킬 목록, 사용법, ax commands, 뭐가 있어
 argument-hint: "[스킬명]"
 user-invocable: true
@@ -34,6 +34,7 @@ allowed-tools:
 | `/ax:sprint` | Master에서 Sprint worktree 오케스트레이션 | "sprint", "스프린트", "worktree" |
 | `/ax:sprint-autopilot` | Sprint WT 전체 자동화 — Plan→Design→Implement→Analyze→Report | "autopilot" |
 | `/ax:sprint-pipeline` | 복수 Sprint 의존성 분석→배치 병렬 실행→자동 merge | "pipeline", "배치 스프린트" |
+| `/ax:sprint-watch` | Sprint WT 원격 모니터링 — Gist 주기 갱신 + 완료 시 merge 자동 실행 | "sprint watch", "모니터링", "gist" |
 | `/ax:git-team` | tmux Agent Teams 병렬 실행 (같은 pane 내) | "agent team", "병렬 작업" |
 
 ### 📋 요구사항 관리
