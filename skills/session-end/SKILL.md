@@ -21,6 +21,7 @@ allowed-tools:
 
 ```
 0c-2. 프로젝트 수치 동기화 (SPEC.md "마지막 실측" 자동 갱신)
+0c-3. 콘텐츠 동기화 (README + 랜딩 페이지 수치 전파)
 1. Git 커밋 (코드 변경)
 2. 프로젝트 문서 갱신 (있으면)
 3. F항목 완료 처리 (SPEC.md + 앱 DB 동기화)
@@ -57,6 +58,7 @@ fi
    - Phase 0 (CLAUDE.md currency) — master에서 관리
    - Phase 0c (열거형 검증) — master에서 관리
    - Phase 0c-2 (수치 동기화) — master에서 관리
+   - Phase 0c-3 (콘텐츠 동기화) — master에서 관리
    - Phase 0d (Migration drift) — master에서 배포 시 확인
    - Phase 2 (SPEC.md/CHANGELOG 갱신) — master의 `/ax-sprint merge`에서 처리
    - Phase 3 (F항목 완료) — master의 `/ax-sprint merge`에서 처리
@@ -226,6 +228,38 @@ TODAY=$(date +%Y-%m-%d)
 - 수치가 이전과 동일하면 수정 안 함 ("metrics sync: OK")
 - 수치가 변경되면 Edit으로 갱신 + Phase 5(문서 커밋)에 포함
 - SPEC.md가 없으면 건너뜀
+
+### Phase 0c-3: 콘텐츠 동기화 — README + 랜딩 페이지 (자동)
+
+Phase 0c-2에서 갱신한 SPEC.md "마지막 실측" 수치를 README.md와 랜딩 페이지 콘텐츠에 전파한다.
+이 Phase는 Master 세션에서만 실행한다 (WT에서는 건너뜀).
+
+**동기화 대상 4개 파일:**
+
+| 파일 | 동기화 항목 | 패턴 |
+|------|------------|------|
+| `README.md` | Phase, Sprints, Routes, Services, Schemas, Tests, D1 | `<!-- README_SYNC_START -->` ~ `<!-- README_SYNC_END -->` |
+| `packages/web/content/landing/hero.md` | phase, phaseTitle, stats | YAML frontmatter |
+| `packages/web/src/routes/landing.tsx` | SITE_META_FALLBACK, STATS_FALLBACK | 상수 객체/배열 |
+| `packages/web/src/components/landing/footer.tsx` | Sprint N · Phase N | 문자열 패턴 |
+
+**실행 절차:**
+
+1. Phase 0c-2에서 수집한 ROUTES, SERVICES, SCHEMAS, D1_LATEST, SPRINT 값을 사용
+2. 4개 파일 각각에서 현재 수치를 Grep으로 추출
+3. 불일치 항목만 Edit으로 수정
+4. 변경사항은 Phase 5 (문서 커밋)에 포함
+
+**보정 범위:**
+- README.md: `README_SYNC_START` ~ `README_SYNC_END` 마커 블록 내부만
+- hero.md: YAML frontmatter stats 값 + phase/phaseTitle
+- landing.tsx: `SITE_META_FALLBACK` 객체 + `STATS_FALLBACK` 배열의 value 필드만 (다른 하드코딩 수치는 WARN 출력)
+- footer.tsx: `Sprint \d+ .* Phase \d+` 패턴
+
+**건너뛰기 조건:**
+- 해당 파일이 없으면 건너뜀
+- README.md에 마커 블록이 없으면 건너뜀
+- 모든 수치가 이전과 동일하면 "content sync: OK"
 
 ### Phase 0d: Migration Drift Check (자동)
 

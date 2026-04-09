@@ -197,6 +197,62 @@ fi
 | 수치 하드코딩 | OK/WARN | CLAUDE.md N건 / MEMORY.md N건 발견 |
 ```
 
+### 6c. 콘텐츠 동기화 — README + 랜딩 페이지 (full 모드만)
+
+> SPEC.md "마지막 실측" + CLAUDE.md "현재 상태"를 SSOT(Single Source of Truth)로 삼아
+> README.md, hero.md, landing.tsx fallback, footer.tsx 4개 파일의 수치를 점검하고 자동 보정한다.
+
+**동기화 대상 4개 파일:**
+
+| 파일 | 동기화 항목 | 마커/패턴 |
+|------|------------|----------|
+| `README.md` | Phase, Sprints, Routes, Services, Schemas, Tests, D1 | `<!-- README_SYNC_START -->` ~ `<!-- README_SYNC_END -->` 블록 |
+| `packages/web/content/landing/hero.md` | phase, phaseTitle, stats(5개) | YAML frontmatter `phase:`, `stats:` |
+| `packages/web/src/routes/landing.tsx` | SITE_META_FALLBACK, STATS_FALLBACK | `sprint:`, `phase:` 문자열 + `STATS_FALLBACK` 배열 |
+| `packages/web/src/components/landing/footer.tsx` | Sprint N · Phase N | `Sprint \d+ .* Phase \d+` 패턴 |
+
+**데이터 소스:**
+
+| 항목 | 출처 |
+|------|------|
+| Phase 번호 + 제목 | CLAUDE.md `현재 상태:` 줄 |
+| Sprints 완료 수 | SPEC.md §2 마지막 `Sprint NNN \| ✅ 완료` 행 |
+| API Routes/Services/Schemas | Step 6b에서 수집한 실제 값 (ls 기반) |
+| Tests | SPEC.md "마지막 실측" tests 값 |
+| D1 Migrations 수 + 최신 번호 | Step 6에서 수집한 MIG_COUNT + LATEST |
+
+**실행 절차:**
+
+1. 위 4개 파일 각각에서 현재 수치를 Grep으로 추출한다.
+2. Step 6/6b에서 수집한 실제 값과 비교한다.
+3. 불일치 항목을 목록화한다.
+4. 파일별 자동 보정:
+
+**README.md 보정:**
+- `README_SYNC_START` ~ `README_SYNC_END` 마커 블록 내 행만 Edit으로 수정
+- 마커 블록 외 콘텐츠는 수동 관리 영역 — 보정 안 함
+- 마커 블록이 없으면 SKIP
+
+**hero.md 보정:**
+- YAML frontmatter의 `phase:`, `phaseTitle:`, `stats:` 항목을 Edit으로 수정
+- body 텍스트는 보정 안 함
+
+**landing.tsx 보정:**
+- `SITE_META_FALLBACK` 객체의 `sprint:`, `phase:`, `phaseTitle:` 값을 Edit으로 수정
+- `STATS_FALLBACK` 배열의 `value:` 값 5개를 Edit으로 수정
+- 기타 하드코딩 수치 (pillars detail, architecture items) — WARN만 출력, 자동 보정 안 함 (구조 의존성 높음)
+
+**footer.tsx 보정:**
+- `Sprint N · Phase N` 패턴을 Grep으로 찾아 Edit으로 수정
+
+**결과 테이블 행 추가:**
+```
+| README.md | OK/WARN | N drift(s) found, M auto-fixed |
+| 랜딩 hero.md | OK/WARN | N drift(s) found, M auto-fixed |
+| 랜딩 fallback | OK/WARN | N drift(s) found, M auto-fixed |
+| 랜딩 footer | OK/WARN | N drift(s) found, M auto-fixed |
+```
+
 ### 7. 디스크/캐시 정리 (full 모드만)
 
 ```bash
@@ -228,6 +284,10 @@ echo "Playwright report: $PW_REPORT, results: $PW_RESULTS"
 | Hooks | OK/WARN | N scripts, M no-exec |
 | D1 Migration | OK/WARN/SKIP | local N files, latest NNNN |
 | CLAUDE.md | OK/WARN | N drift(s) found, M auto-fixed |
+| README.md | OK/WARN | N drift(s) found, M auto-fixed |
+| 랜딩 hero.md | OK/WARN | N drift(s) found, M auto-fixed |
+| 랜딩 fallback | OK/WARN | N drift(s) found, M auto-fixed |
+| 랜딩 footer | OK/WARN | N drift(s) found, M auto-fixed |
 | Disk/Cache | INFO | turbo XMB, playwright YMB |
 
 ### 자동 보정 수행
