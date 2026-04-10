@@ -2,9 +2,9 @@
 name: daily-check
 description: |
   Daily Task 시작 전 환경 점검 + 자동 보정.
-  Node/pnpm 버전, 의존성, Git 동기화, 빌드 상태, D1 마이그레이션 drift, Hook 상태, SPEC.md 수치 정합성을 점검한다.
+  Node/pnpm 버전, 의존성, Git 동기화, Worktree/Branch 위생, 빌드 상태, D1 마이그레이션 drift, Hook 상태, SPEC.md 수치 정합성을 점검한다.
   문제 발견 시 자동 보정을 시도하고, 보정 불가 항목은 보고한다.
-  Use when: 환경 점검, daily check, 시작 전 점검, health check
+  Use when: 환경 점검, daily check, 시작 전 점검, health check, worktree 점검, branch 점검
 argument-hint: "[full|quick]"
 user-invocable: true
 allowed-tools:
@@ -21,8 +21,8 @@ allowed-tools:
 
 | 서브커맨드 | 동작 |
 |-----------|------|
-| `full` (기본) | 전체 8항목 점검 + 자동 보정 (SPEC.md 수치 포함) |
-| `quick` | 핵심 3항목만 (Git 동기화 + 의존성 + 타입체크) |
+| `full` (기본) | 전체 9항목 점검 + 자동 보정 (SPEC.md 수치 포함) |
+| `quick` | 핵심 4항목만 (Git 동기화 + Worktree/Branch 위생 + 의존성 + 타입체크) |
 
 ## Steps
 
@@ -71,6 +71,85 @@ echo "Dirty files: $DIRTY"
 - behind > 0, dirty = 0 → `git pull --rebase origin $BRANCH` 실행
 - behind > 0, dirty > 0 → 보정 불가, "stash 후 pull 권장" 안내
 - ahead > 0 → "push 필요" 알림 (자동 push 안 함)
+
+### 2b. Worktree / Branch 위생 점검
+
+> Master pane에서 오케스트레이션하고, 실제 작업은 worktree에서 진행하는 구조의 위생을 검증한다.
+> 고아 worktree, stale branch, 미완료 sprint 잔여물을 감지하여 알리고, 자동 보정 가능 항목은 처리한다.
+
+**Phase 1: Worktree 점검**
+
+```bash
+echo "=== Worktree Hygiene ==="
+# 1a. git worktree list — 활성 worktree 전수 조회
+git worktree list
+
+# 1b. 고아 worktree 감지 (디렉토리가 사라졌지만 git이 추적 중인 WT)
+ORPHAN_WT=$(git worktree list --porcelain | awk '/^worktree / {path=$2} /^HEAD / {if (path != "") system("test -d " path " || echo ORPHAN:" path)}')
+
+# 1c. 활성 WT에 미커밋 변경이 있는지 확인
+for wt in $(git worktree list --porcelain | awk '/^worktree / {print $2}'); do
+  if [ "$wt" != "$(git rev-parse --show-toplevel)" ]; then
+    DIRTY=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l)
+    if [ "$DIRTY" -gt 0 ]; then
+      echo "DIRTY-WT: $wt ($DIRTY files)"
+    fi
+  fi
+done
+```
+
+**Phase 2: Branch 점검**
+
+```bash
+# 2a. 로컬 브랜치 중 remote가 삭제된 것 (gone 브랜치)
+git branch -vv | grep ': gone]' | awk '{print $1}'
+
+# 2b. 로컬 브랜치 중 master에 이미 merge된 것 (stale)
+git branch --merged master | grep -v '^\*\|master'
+
+# 2c. remote에만 남은 stale 브랜치 (PR closed/merged이지만 auto-delete 누락)
+git remote prune origin --dry-run 2>/dev/null
+
+# 2d. sprint/* 브랜치 중 대응 worktree가 없는 것
+for branch in $(git branch --list 'sprint/*' 2>/dev/null | sed 's/^[* ]*//' ); do
+  WT_EXISTS=$(git worktree list --porcelain | grep -c "branch refs/heads/$branch" || true)
+  if [ "$WT_EXISTS" -eq 0 ]; then
+    echo "ORPHAN-BRANCH: $branch (no worktree)"
+  fi
+done
+```
+
+**Phase 3: Sprint Signal 잔여물 점검**
+
+```bash
+# /tmp/sprint-signals/ 에 오래된 signal 파일이 남아있는지
+SIGNAL_DIR="/tmp/sprint-signals"
+if [ -d "$SIGNAL_DIR" ]; then
+  STALE_SIGNALS=$(find "$SIGNAL_DIR" -name "*.signal" -mmin +120 2>/dev/null | wc -l)
+  echo "Stale signals (>2h): $STALE_SIGNALS"
+fi
+
+# /tmp/claude-session-* 잔여 파일
+SESSION_FILES=$(ls /tmp/claude-session-* /tmp/claude-req-* 2>/dev/null | wc -l)
+echo "Session temp files: $SESSION_FILES"
+```
+
+**자동 보정:**
+- 고아 worktree (디렉토리 없음) → `git worktree prune` 실행
+- gone 브랜치 (remote 삭제됨) → `git branch -d` 실행 (force 아님 — merge 안 된 건 보존)
+- master에 merge된 stale 로컬 브랜치 → `git branch -d` 실행
+- remote stale ref → `git remote prune origin` 실행
+- stale signal 파일 (2시간+) → 삭제
+- stale session temp 파일 (24시간+, 현재 pane 것 제외) → 삭제
+- 미커밋 변경이 있는 WT → **보정 안 함**, WARN만 (사용자가 직접 처리)
+- orphan sprint branch (WT 없음) → **보정 안 함**, WARN만 (의도적 보존 가능)
+
+**결과 테이블 행:**
+```
+| Worktree | OK/WARN | 활성 N개, 고아 M개, dirty K개 |
+| Branch | OK/WARN | stale N개 정리, orphan M개 감지 |
+| Sprint Signals | OK/WARN | stale N개, session temp M개 |
+```
 
 ### 3. 의존성 상태
 
@@ -279,11 +358,15 @@ echo "Playwright report: $PW_REPORT, results: $PW_RESULTS"
 |------|------|------|
 | Runtime | OK/WARN | node X, pnpm Y |
 | Git Sync | OK/WARN/ERR | ahead=N behind=M dirty=K |
+| Worktree | OK/WARN | 활성 N개, 고아 M개, dirty K개 |
+| Branch | OK/WARN | stale N개 정리, orphan M개 감지 |
+| Sprint Signals | OK/WARN | stale N개, session temp M개 |
 | Dependencies | OK/STALE | pnpm install 필요 여부 |
 | TypeScript | OK/ERR | N errors |
 | Hooks | OK/WARN | N scripts, M no-exec |
 | D1 Migration | OK/WARN/SKIP | local N files, latest NNNN |
-| CLAUDE.md | OK/WARN | N drift(s) found, M auto-fixed |
+| SPEC.md 수치 | OK/WARN | N drift(s) found, M auto-fixed |
+| 수치 하드코딩 | OK/WARN | CLAUDE.md N건 / MEMORY.md N건 |
 | README.md | OK/WARN | N drift(s) found, M auto-fixed |
 | 랜딩 hero.md | OK/WARN | N drift(s) found, M auto-fixed |
 | 랜딩 fallback | OK/WARN | N drift(s) found, M auto-fixed |
@@ -299,8 +382,8 @@ echo "Playwright report: $PW_REPORT, results: $PW_RESULTS"
 
 ## quick 모드
 
-`quick`일 때는 Step 2 (Git), Step 3 (Dependencies), Step 4 (TypeScript)만 실행한다.
-Step 1, 5, 6, 7은 건너뛴다.
+`quick`일 때는 Step 2 (Git), Step 2b (Worktree/Branch), Step 3 (Dependencies), Step 4 (TypeScript)만 실행한다.
+Step 1, 5, 6, 6b, 6c, 7은 건너뛴다.
 
 ## Gotchas
 
