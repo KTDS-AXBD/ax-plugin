@@ -1,7 +1,7 @@
 ---
 name: help
 description: |
-  ax 스킬셋 사용 가이드 — 23개 스킬의 용도, 서브커맨드, 실전 사례 안내.
+  ax 스킬셋 사용 가이드 — 24개 스킬의 용도, 서브커맨드, 실전 사례 안내.
   Use when: ax help, ax 도움말, 스킬 목록, 사용법, ax commands, 뭐가 있어
 argument-hint: "[스킬명]"
 user-invocable: true
@@ -66,6 +66,11 @@ allowed-tools:
 |------|------|--------|
 | `/ax:infra-selfcheck` | ax 플러그인 정합성 자율점검 | "selfcheck", "점검" |
 | `/ax:infra-statusline` | tmux pane REQ 표시 관리 | "statusline" |
+
+### ⚙️ Task Orchestrator (S-α)
+| 명령 | 용도 | 트리거 |
+|------|------|--------|
+| `/ax:task` | F/B/C/X 4트랙 task start/list — Master pane 기반 WT 생성 + GitHub Issue 자동 | "task start", "task list", "task 등록" |
 
 ---
 
