@@ -1,0 +1,6 @@
+# Plugin cache artifacts accidentally materialized inside source repo
+cache/
+
+# OS/editor noise
+.DS_Store
+*.swp
