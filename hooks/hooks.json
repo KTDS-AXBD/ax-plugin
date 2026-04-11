@@ -1,0 +1,61 @@
+{
+  "description": "AX BD Team unified workflow hooks — session init, file protection, secret scan, doc meta, quality gate",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-init.sh \"$PWD\"",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/protect-files.sh",
+            "timeout": 10000
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/secret-scan.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(echo \"$CLAUDE_TOOL_INPUT\" | grep -oP '\"file_path\"\\s*:\\s*\"\\K[^\"]+'); if [[ -n \"$FILE\" && -f \"$FILE\" ]]; then bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/doc-meta.sh \"$FILE\"; fi",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/quality-gate.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
+}
