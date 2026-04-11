@@ -19,12 +19,13 @@ allowed-tools:
 
 ## Arguments
 
-`/ax-req-manage [new|triage|list|status|sync]`
+`/ax-req-manage [new|triage|list|status|priority|sync]`
 
 - `new` — 새 요구사항 등록
 - `triage` — 미분류(OPEN) 요구사항에 유형/도메인/우선순위 배정
 - `list` — 요구사항 목록 조회 (상태/우선순위 필터)
 - `status` — 요구사항 상태 변경 (SPEC.md + 앱 DB + GitHub Project 동시 갱신)
+- `priority` — Priority(P0~P3) 변경 + **F507 이력 자동 기록** (scripts/priority/record-change.sh)
 - `sync` — SPEC.md ↔ 앱 DB ↔ GitHub Project 동기화 점검
 
 ## GitHub Project 사전 조건 (공통)
@@ -341,6 +342,48 @@ fi
    - GitHub Project: ✅ Status → {new_status}
    - MEMORY.md: ✅ 갱신
    ```
+
+### `/ax-req-manage priority` — Priority 변경 (F507 이력 자동 기록)
+
+Foundry-X Phase 32-D(F507)의 `scripts/priority/record-change.sh`와 연동해 Priority 변경을 append-only 이력으로 기록한다.
+
+1. AskUserQuestion으로 변경 대상과 새 Priority를 수집한다:
+   - 대상: F번호 (예: F507)
+   - 새 Priority: P0(critical) / P1(high) / P2(medium) / P3(low)
+   - 사유: 변경 사유 (필수, append-only 감사 로그에 남음)
+
+2. 현재 Priority를 SPEC.md에서 추출:
+   ```bash
+   F_NUM="{대상}"
+   OLD_P=$(grep "^\| ${F_NUM} \|" SPEC.md | grep -oP 'P[0-3]' | head -1)
+   [ -z "$OLD_P" ] && { echo "ERROR: ${F_NUM} SPEC.md에 없음 또는 Priority 누락"; exit 1; }
+   ```
+
+3. **record-change.sh 호출** (F507 통합) — flock guard + 중복 dedupe 내장:
+   ```bash
+   if [ -x scripts/priority/record-change.sh ]; then
+     bash scripts/priority/record-change.sh "$F_NUM" "$OLD_P" "{NEW_P}" "{사유}"
+     # 성공: docs/priority-history/{F_NUM}.md append + Issue comment + label swap
+     # 실패: exit 2 (lock 실패) / 경고 후 계속 (Issue sync 실패)
+   else
+     echo "⚠️  scripts/priority/record-change.sh 없음 — 수동 기록 필요"
+   fi
+   ```
+
+4. SPEC.md에서 F-item 행의 Priority 마커 업데이트:
+   ```bash
+   sed -i "s|\(^| ${F_NUM} |.*\)${OLD_P}|\1{NEW_P}|" SPEC.md
+   ```
+
+5. 결과 출력:
+   ```
+   F{N}: {OLD_P} → {NEW_P}
+   - SPEC.md: ✅ 갱신
+   - priority-history: ✅ append (docs/priority-history/{F_NUM}.md)
+   - GitHub Issue: ✅ comment + label 교체 (또는 ⏭️ skip)
+   ```
+
+> **주의**: Priority 변경은 append-only 이력이라 잘못 기록해도 **과거 행 수정/삭제 금지**. 정정은 새 행 추가로만 가능 (`scripts/priority/record-change.sh`의 정책).
 
 ### `/ax-req-manage sync` — SPEC ↔ 앱 DB ↔ GitHub Project 동기화 점검
 

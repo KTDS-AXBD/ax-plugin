@@ -429,7 +429,41 @@ SPEC.md §2 테이블에서 해당 행을 찾아 실측값으로 교체:
 - 값이 SPEC.md 기존값과 동일하면 변경하지 않음 (불필요한 diff 방지)
 
 **CHANGELOG.md** (또는 docs/CHANGELOG.md):
-- 파일 상단에 이번 세션 기록 추가:
+
+**형식 자동 감지** — 파일 상단에 `## [Unreleased]`가 있으면 Keep a Changelog 형식, 아니면 기존 "### 세션 NNN" 형식으로 동작 (F502).
+
+**Keep a Changelog 형식 (권장)** — `## [Unreleased]` 존재 시:
+```bash
+# 마지막 태그 이후 커밋 중 feat:/fix:/docs: 타입만 추출
+LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+if [ -n "$LAST_TAG" ]; then
+  COMMITS=$(git log --oneline "$LAST_TAG"..HEAD 2>/dev/null)
+else
+  COMMITS=$(git log --oneline -20 2>/dev/null)
+fi
+
+echo "$COMMITS" | while IFS= read -r line; do
+  MSG=$(echo "$line" | sed 's/^[a-f0-9]\{7,\} //')
+  TYPE=$(echo "$MSG" | grep -oP '^(feat|fix|docs)' || true)
+  [ -z "$TYPE" ] && continue
+  # 중복 방지
+  grep -qF "$MSG" CHANGELOG.md && continue
+  case "$TYPE" in
+    feat) SECTION="Added" ;;
+    fix)  SECTION="Fixed" ;;
+    docs) SECTION="Changed" ;;
+  esac
+  # [Unreleased] 내 해당 섹션 아래에 삽입. 섹션이 없으면 [Unreleased] 직후 생성.
+  if awk '/## \[Unreleased\]/,/## \[/' CHANGELOG.md | grep -q "### ${SECTION}"; then
+    sed -i "0,/### ${SECTION}/{/### ${SECTION}/a\\- ${MSG}
+}" CHANGELOG.md
+  else
+    sed -i "/## \[Unreleased\]/a\\\n### ${SECTION}\n- ${MSG}" CHANGELOG.md
+  fi
+done
+```
+
+**기존 "세션 NNN" 형식 (fallback)** — `## [Unreleased]`가 없을 때 파일 상단에 추가:
 ```markdown
 ### 세션 NNN (YYYY-MM-DD)
 **[작업 요약 1줄]**:
@@ -592,6 +626,46 @@ fi
 
    - 결과: "GitHub Project: N건 추가, N건 Status 갱신"
    - Project 없으면: "⏭️ GitHub Project: 건너뜀 (Org Project 미설정)"
+
+### Phase 3d: Phase 32 Work Management 스크립트 연동 (F508 통합)
+
+Foundry-X Phase 32(F501~F507) 스크립트와 session-end의 브리지. 프로젝트에 해당 스크립트가 있을 때만 동작하고, 없으면 조용히 건너뜀.
+
+**Board 드리프트 감지 (F503)**:
+```bash
+# board-sync-spec.sh 리포트 모드로 드리프트만 감지 (--fix는 사용자 승인 후)
+if [ -x scripts/board/board-sync-spec.sh ]; then
+  DRIFT_COUNT=$(bash scripts/board/board-sync-spec.sh 2>/dev/null | grep -oP 'drift=\K\d+' || echo "0")
+  if [ "${DRIFT_COUNT:-0}" -gt 0 ]; then
+    echo "⚠️  Board 드리프트 ${DRIFT_COUNT}건 감지 — '/ax-req-manage sync' 또는 'bash scripts/board/board-sync-spec.sh --fix' 권장"
+  fi
+fi
+```
+
+**Velocity 수동 기록 (F505, Master 세션 전용)**:
+```bash
+# Sprint WT 세션에서는 sprint-merge-monitor가 자동 호출하므로 skip
+# Master 세션에서 수동 Sprint 추적이 필요한 경우에만 실행
+if [ "$IS_WORKTREE" != "true" ] && [ -x scripts/velocity/record-sprint.sh ]; then
+  # 이번 세션이 F-item을 완료했고 .sprint-context가 없으면 수동 Sprint로 간주
+  if [ -n "${SESSION_F_ITEMS:-}" ] && [ ! -f .sprint-context ]; then
+    echo "ℹ️  Sprint 외 F-item 완료 감지 — velocity 기록 수동 트리거 가능"
+    # 자동 실행은 하지 않음 (false trigger 방지), 안내만 출력
+  fi
+fi
+```
+
+**Phase 진행률 확인 (F506)**:
+```bash
+if [ -x scripts/epic/phase-progress.sh ]; then
+  bash scripts/epic/phase-progress.sh 2>&1 | tail -5 | sed 's/^/  /' || true
+fi
+```
+
+**동작 요약:**
+- 드리프트 발견 시 경고 + 수정 가이드 출력 (자동 수정 안 함 — 보수적)
+- Sprint WT 세션은 sprint-merge-monitor가 이미 `pr-body-enrich + velocity + epic`을 자동 실행하므로 중복 호출 안 함
+- 스크립트 미존재 프로젝트(비-Foundry-X)는 전 단계 건너뜀
 
 ### Phase 4: Auto Memory 갱신
 

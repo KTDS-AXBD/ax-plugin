@@ -43,6 +43,30 @@ pnpm lint 2>&1 | grep -c 'error' || echo 0
 pnpm typecheck 2>&1 | grep -c 'error' || echo 0
 ```
 
+### 2b. Phase 32 스크립트 연동 — Velocity + Priority 이력 (F508)
+
+프로젝트에 Phase 32 Work Management 스크립트가 있으면 회고 자료로 자동 수집한다. 없으면 조용히 건너뜀.
+
+```bash
+# Velocity 트렌드 (F505) — 이번 Phase의 Sprint 메트릭 집계
+if [ -x scripts/velocity/phase-trend.sh ]; then
+  PHASE_NUM=$(echo "${ARG:-}" | grep -oE '[0-9]+' | head -1)
+  [ -z "$PHASE_NUM" ] && PHASE_NUM=$(grep -oP 'Phase \K\d+' SPEC.md 2>/dev/null | sort -n | tail -1)
+  if [ -n "$PHASE_NUM" ]; then
+    VELOCITY_SUMMARY=$(bash scripts/velocity/phase-trend.sh "$PHASE_NUM" 2>/dev/null || true)
+  fi
+fi
+
+# Priority 변경 이력 (F507) — 이번 회고 기간 내 P0~P3 변동
+if [ -x scripts/priority/list-history.sh ]; then
+  # 이전 태그 날짜 추출 (없으면 30일 prefix)
+  LAST_TAG_DATE=$(git log -1 --format=%cd --date=short "$(git describe --tags --abbrev=0 2>/dev/null)" 2>/dev/null || date -d '30 days ago' +%Y-%m 2>/dev/null || echo "$(date +%Y)")
+  PRIORITY_CHANGES=$(bash scripts/priority/list-history.sh --since "$LAST_TAG_DATE" 2>/dev/null || true)
+fi
+```
+
+이 두 출력은 Step 4 회고 작성에서 "스코프 드리프트" 분석 자료로 사용한다 (Priority 강등/승격 빈도 = 의사결정 안정성 지표).
+
 ### 3. 이전 지표와 비교
 
 SPEC.md "주요 지표" 섹션에서 이전 수치를 읽어 변화량을 계산한다.
@@ -162,6 +186,18 @@ req-integrity의 *구조적 공백* 카테고리를 점진적으로 해소하는
 회고 요약을 출력하고, 태그 생성 여부를 확인한다:
 ```bash
 git tag -a v{version} -m "마일스톤: {한줄 요약}"
+```
+
+**CHANGELOG.md Release Notes 전환 (F502)** — 태그 생성 성공 시 `[Unreleased]`를 `[v{version}] - {date}`로 승격:
+```bash
+if [ -f CHANGELOG.md ] && grep -q '^## \[Unreleased\]' CHANGELOG.md; then
+  NEW_VERSION=$(git describe --tags --abbrev=0)
+  DATE=$(date +%Y-%m-%d)
+  # Unreleased 섹션 위에 새로운 [vX.Y.Z] 헤더를 올리고, 기존 [Unreleased]는 빈 상태로 유지
+  sed -i "s|^## \[Unreleased\]$|## [Unreleased]\n\n## [${NEW_VERSION}] - ${DATE}|" CHANGELOG.md
+  git add CHANGELOG.md
+  git commit -m "docs: release notes ${NEW_VERSION}" 2>/dev/null || true
+fi
 ```
 
 
