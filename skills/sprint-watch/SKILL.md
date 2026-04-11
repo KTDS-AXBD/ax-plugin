@@ -85,8 +85,71 @@ done
 # 3. 최근 master 커밋 (merge 감지)
 RECENT_MERGES=$(git log --oneline -5 --grep="Sprint" 2>/dev/null)
 
-# 4. merge-monitor 생존 여부
-MONITOR_COUNT=$(ps aux | grep sprint-merge-monitor | grep -v grep | wc -l)
+# 4. Monitor 생존 감시 + 자동 재시작
+MONITORS=(
+  "sprint-merge-monitor:bash ~/scripts/sprint-merge-monitor.sh"
+  "sprint-status-monitor:bash ~/scripts/sprint-status-monitor.sh 45 60"
+  "sprint-auto-approve:bash ~/scripts/sprint-auto-approve.sh 10 120"
+)
+MONITOR_TABLE=""
+RESTART_COUNT_FILE="/tmp/sprint-signals/monitor-restart-counts"
+touch "$RESTART_COUNT_FILE"
+
+for ENTRY in "${MONITORS[@]}"; do
+  NAME="${ENTRY%%:*}"
+  CMD="${ENTRY#*:}"
+  PID=$(pgrep -f "$NAME" | head -1)
+
+  if [ -n "$PID" ]; then
+    UPTIME=$(ps -o etime= -p "$PID" 2>/dev/null | tr -d ' ')
+    MONITOR_TABLE+="| $NAME | $PID | $UPTIME | ✅ |\n"
+  else
+    # 재시작 카운터 확인 (3회 초과 시 중단)
+    PREV_COUNT=$(grep "^${NAME}=" "$RESTART_COUNT_FILE" 2>/dev/null | cut -d= -f2 || echo 0)
+    if [ "${PREV_COUNT:-0}" -lt 3 ]; then
+      LOG="/tmp/sprint-signals/${NAME}-restart.log"
+      nohup $CMD > "$LOG" 2>&1 & disown
+      NEW_PID=$!
+      NEW_COUNT=$((PREV_COUNT + 1))
+      sed -i "/^${NAME}=/d" "$RESTART_COUNT_FILE"
+      echo "${NAME}=${NEW_COUNT}" >> "$RESTART_COUNT_FILE"
+      MONITOR_TABLE+="| $NAME | $NEW_PID | 0s | 🔄 재시작 (${NEW_COUNT}/3) |\n"
+    else
+      MONITOR_TABLE+="| $NAME | — | — | ❌ 재시작 한도 초과 |\n"
+    fi
+  fi
+done
+
+# 5. Pipeline State 읽기 (Pipeline 활성 시)
+STATE_FILE="/tmp/sprint-pipeline-state.json"
+PIPELINE_ACTIVE=false
+if [ -f "$STATE_FILE" ]; then
+  PIPELINE_STATUS=$(python3 -c "
+import json, sys
+try:
+    with open('$STATE_FILE') as f:
+        state = json.load(f)
+    if state.get('status') != 'completed':
+        phases = [
+            ('1~3 배치 계획', 'done' if state.get('batches') else 'pending'),
+            ('4 배치 실행', 'done' if all(b.get('status')=='done' for b in state.get('batches',[])) else 'running'),
+            ('5 완료 보고', 'done' if state.get('phase6',{}).get('status')!='pending' else 'pending'),
+            ('6 Gap Analyze', state.get('phase6',{}).get('status','pending')),
+            ('7 Iterator', state.get('phase7',{}).get('status','pending')),
+            ('8 Session-End', state.get('phase8',{}).get('status','pending')),
+        ]
+        icons = {'done':'✅','running':'🔧','pending':'⏳','skipped':'⏭️','failed':'❌'}
+        for name, status in phases:
+            icon = icons.get(status, '?')
+            print(f'| {name} | {icon} |')
+        print('ACTIVE')
+    else:
+        print('COMPLETED')
+except Exception as e:
+    print(f'ERROR: {e}', file=sys.stderr)
+  " 2>/dev/null)
+  echo "$PIPELINE_STATUS" | grep -q "ACTIVE" && PIPELINE_ACTIVE=true
+fi
 ```
 
 **Gist 출력 포맷:**
@@ -95,7 +158,12 @@ MONITOR_COUNT=$(ps aux | grep sprint-merge-monitor | grep -v grep | wc -l)
 # 🏗️ Foundry-X Sprint Monitor
 
 > 최종 갱신: {NOW} (KST)
-> Merge Monitor: {MONITOR_COUNT}개 가동
+
+## Pipeline 진행 (Pipeline 활성 시에만 표시)
+
+| Phase | 상태 |
+|-------|:----:|
+{PIPELINE_STATUS 테이블 — Phase 1~8}
 
 ## 활성 Sprint
 
@@ -104,6 +172,12 @@ MONITOR_COUNT=$(ps aux | grep sprint-merge-monitor | grep -v grep | wc -l)
 | 200 | F418,F419 | IN_PROGRESS | 47% | thinking |
 | 194 | F410 | CREATED | — | — |
 
+## Monitor 상태
+
+| 프로세스 | PID | 가동시간 | 상태 |
+|----------|-----|---------|------|
+{MONITOR_TABLE}
+
 ## 최근 완료 (master merge)
 
 | 시각 | Sprint | 내용 |
@@ -111,7 +185,7 @@ MONITOR_COUNT=$(ps aux | grep sprint-merge-monitor | grep -v grep | wc -l)
 | 16:32 | 199 | feat: Sprint 199 — F416,F417 |
 | 16:20 | 198 | feat: Sprint 198 — F414,F415 |
 
-## Phase 22 진행률
+## Phase 진행률
 
 ```
 M1 ████████████ 100% (F414~F417 ✅)
@@ -125,10 +199,47 @@ _🤖 Auto-updated by sprint-watch_
 
 **Gist 갱신:**
 ```bash
-# 마크다운 파일 생성
-cat > /tmp/sprint-monitor.md <<EOF
-{위 포맷으로 생성된 내용}
-EOF
+# 마크다운 파일 생성 — Pipeline + Sprint + Monitor 통합
+{
+  echo "# 🏗️ Foundry-X Sprint Monitor"
+  echo ""
+  echo "> 최종 갱신: ${NOW} (KST)"
+  echo ""
+
+  # Pipeline 진행률 (활성 시에만)
+  if [ "$PIPELINE_ACTIVE" = "true" ]; then
+    echo "## Pipeline 진행"
+    echo ""
+    echo "| Phase | 상태 |"
+    echo "|-------|:----:|"
+    echo "$PIPELINE_STATUS" | grep "^|"
+    echo ""
+  fi
+
+  # 활성 Sprint 테이블
+  echo "## 활성 Sprint"
+  echo ""
+  echo "| Sprint | F-items | Status | Progress | Activity |"
+  echo "|--------|---------|--------|----------|----------|"
+  # {Sprint 데이터}
+  echo ""
+
+  # Monitor 상태
+  echo "## Monitor 상태"
+  echo ""
+  echo "| 프로세스 | PID | 가동시간 | 상태 |"
+  echo "|----------|-----|---------|------|"
+  echo -e "$MONITOR_TABLE"
+  echo ""
+
+  # 최근 완료
+  echo "## 최근 완료 (master merge)"
+  echo ""
+  # {merge 데이터}
+
+  echo "---"
+  echo "_🤖 Auto-updated by sprint-watch_"
+} > /tmp/sprint-monitor.md
 
 # Gist 갱신
 GIST_ID=$(grep GIST_ID .sprint-watch-config | cut -d= -f2)
