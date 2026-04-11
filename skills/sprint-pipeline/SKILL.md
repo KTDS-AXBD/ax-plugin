@@ -416,6 +416,46 @@ Monitor에서 충돌 감지 시:
 8. **PDCA 통합**: Phase 6~7은 gap-detector/pdca-iterator 에이전트를 Master에서 직접 호출 (WT 재진입 불필요)
 9. **Session-End 위임**: Phase 8은 `/ax:session-end`에 위임하여 SPEC/MEMORY 동기화 + CI 확인 재활용
 
+## 런타임 지원 스크립트
+
+이 스킬은 `~/scripts/` 하위의 두 bash 스크립트와 연동해요. 스킬 본문(Phase 4)이 설명하는 "Signal 기반 자동 merge" 흐름의 signal 생산자와 배치 진행 제어가 여기에 있어요.
+
+### `~/scripts/sprint-post-session.sh` — Sprint WT 종료 훅
+
+**호출 시점**: `ccw()` 함수가 Sprint worktree 내부에서 Claude 프로세스 종료 직후 자동 실행 (사용자가 직접 호출하지 않음).
+
+**전제 조건**:
+- 현재 디렉터리에 `.sprint-context` 파일 존재 (없으면 exit 1)
+- `.sprint-context`는 `SPRINT_NUM`, `PROJECT`, `F_ITEMS`, 선택적으로 `CHECKPOINT`, `MATCH_RATE`, `TEST_RESULT`를 포함
+
+**동작 순서**:
+1. **Push 확인** — `origin/sprint/{N}` 원격 브랜치가 없으면 `git push -u origin sprint/{N}` 실행. session-end가 이미 push했으면 skip.
+2. **PR 생성** — `gh pr list --head sprint/{N}`으로 기존 PR 확인 후, 없으면 `gh pr create` (title: `feat: Sprint {N} — {F_ITEMS}`, body: 최근 커밋 10개 요약). `GH_TOKEN`은 `.git/.credentials`에서 자동 추출.
+3. **Signal 파일 갱신** — `/tmp/sprint-signals/{PROJECT}-{SPRINT_NUM}.signal`에 `STATUS=DONE` + `PR_NUM` + `CHECKPOINT` + `MATCH_RATE` + `TIMESTAMP` 기록. Master의 `sprint-merge-monitor.sh`가 이 파일을 polling해서 자동 merge를 시작해요.
+
+**SKILL.md Phase 4와의 관계**: Phase 4는 WT 생성 시 `STATUS=CREATED` signal을 만들어요. post-session이 WT 종료 시 같은 파일을 `STATUS=DONE`으로 덮어써서 Master monitor에게 merge 가능 신호를 전달해요. 두 스크립트 사이에 signal 상태 머신(`CREATED→DONE`)이 완성돼요.
+
+**수정 시 주의**: Signal 필드를 바꾸면 `sprint-merge-monitor.sh`의 파싱도 같이 갱신해야 해요 (두 스크립트는 signal 스키마를 암묵적으로 공유).
+
+### `~/scripts/sprint-pipeline-monitor.sh` — 레거시 배치 진행 예시 (Phase 15 전용)
+
+> ⚠️ **이 스크립트는 재사용 가능한 런타임이 아니에요.** Sprint 번호(154/155/156/157), 프로젝트 루트, F-items가 코드에 하드코딩된 **Foundry-X Phase 15 discovery-ui-v2 일회성 자동화**예요. 현재 Sprint Pipeline 스킬은 이 스크립트를 호출하지 않고, Master Claude가 스킬 본문(Phase 4~8)을 직접 실행해요.
+
+**문서화 이유**: 레거시 배치 자동화 패턴의 참고 예시로 남겨요. "배치 의존성을 signal polling으로 관리한다"는 스킬의 핵심 설계가 이 스크립트의 초기 구현에서 검증됐어요.
+
+**동작 요약** (참고용):
+- `CHECK_INTERVAL=30`초 간격으로 `is_sprint_done()` polling (signal에 `STATUS=DONE` 또는 `MERGED`)
+- 배치 전이: Batch 1(S154) → Batch 2(S155+S156 병렬) → Batch 3(S157)
+- 각 배치 시작 시 `start_sprint()` 호출 → SPEC.md F-item 📋→🔧 전환 + `bash -i -c "sprint $n"` + signal `STATUS=CREATED` + tmux에 `ccs` → `/ax:sprint-autopilot` 주입
+- 마지막 배치 완료 시 `PIPELINE_COMPLETE` signal 생성 + Master tmux 세션에 후속 PDCA 명령 자동 전달
+
+**현재 스킬의 등가물**:
+- 배치 전이 → SKILL.md Phase 4 배치 루프 (Master Claude가 직접)
+- signal polling → `~/scripts/sprint-merge-monitor.sh` (background, `run_in_background: true`)
+- 후속 PDCA 주입 → Phase 6~8 (gap-detector / pdca-iterator / session-end 에이전트/스킬 위임)
+
+**재사용이 필요하다면**: 이 스크립트를 복사해 프로젝트/Sprint/F-items 상수를 치환하는 대신, Sprint Pipeline 스킬(`/ax:sprint-pipeline N,N,N`)을 쓰세요. 스킬 쪽이 의존성 분석 + Phase 6~8 PDCA 통합을 자동 처리해요.
+
 ## Gotchas
 
 - Master 브랜치에서만 실행 (worktree에서 실행하면 에러)
