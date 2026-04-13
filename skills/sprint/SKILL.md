@@ -156,6 +156,7 @@ ERROR_STEP=
 ERROR_MSG=
 MATCH_RATE=
 TEST_RESULT=
+MONITOR_TASK_ID=
 TIMESTAMP=$(date -Iseconds)
 SIGNAL
 ```
@@ -189,6 +190,36 @@ Monitor(
   command: "tail -f /tmp/task-signals/daemon-${PROJECT}.log /tmp/sprint-signals/${PROJECT}-${N}.signal 2>/dev/null"
 )
 ```
+
+**Monitor 시작 직후 — MONITOR_TASK_ID를 signal 파일에 기록**:
+> Monitor 도구가 반환하는 task ID를 signal 파일에 저장한다.
+> 이후 `done`/`merge`에서 TaskStop으로 Monitor를 정리할 수 있게 하기 위함이다.
+
+```bash
+# Monitor 도구 반환값에서 task ID 추출 후 signal에 기록
+# (Monitor 도구 호출 결과의 task_id 또는 id 필드 사용)
+MONITOR_TASK_ID="<Monitor 도구 반환 ID>"
+SIGNAL_FILE="/tmp/sprint-signals/${PROJECT}-${N}.signal"
+if [ -f "$SIGNAL_FILE" ] && [ -n "$MONITOR_TASK_ID" ]; then
+  # 기존 MONITOR_TASK_ID 줄 교체 또는 추가
+  if grep -q "^MONITOR_TASK_ID=" "$SIGNAL_FILE"; then
+    sed -i "s/^MONITOR_TASK_ID=.*/MONITOR_TASK_ID=${MONITOR_TASK_ID}/" "$SIGNAL_FILE"
+  else
+    echo "MONITOR_TASK_ID=${MONITOR_TASK_ID}" >> "$SIGNAL_FILE"
+  fi
+fi
+```
+
+> Monitor 자체 종료 조건: signal의 STATUS가 DONE/MERGED/FAILED이면 Monitor 명령이 감지하고 루프를 종료한다.
+> Monitor command에 자체 종료 로직을 포함시키려면:
+> ```
+> command: "bash -c 'while true; do
+>   cat /tmp/sprint-signals/${PROJECT}-${N}.signal 2>/dev/null;
+>   STATUS=$(grep \"^STATUS=\" /tmp/sprint-signals/${PROJECT}-${N}.signal 2>/dev/null | cut -d= -f2);
+>   [ \"$STATUS\" = \"DONE\" ] || [ \"$STATUS\" = \"MERGED\" ] || [ \"$STATUS\" = \"FAILED\" ] && break;
+>   sleep 5;
+> done'"
+> ```
 
 > task-daemon `phase_sprint_signals()` 동작:
 > signal STATUS=DONE 감지 → PR 조회 → CI 대기 → squash merge → WT/브랜치 cleanup → board sync → velocity 기록
@@ -397,11 +428,23 @@ PR을 merge하고 배포까지 진행한다.
    cd packages/api && npx wrangler deploy
    ```
 
-6. **SPEC.md 갱신**: F-item 상태 🔧 → ✅
+6. **Monitor TaskStop** (signal의 MONITOR_TASK_ID 사용):
+   ```bash
+   SIGNAL_FILE="/tmp/sprint-signals/${PROJECT}-${N}.signal"
+   MONITOR_TASK_ID=$(grep "^MONITOR_TASK_ID=" "$SIGNAL_FILE" 2>/dev/null | cut -d= -f2)
+   if [ -n "$MONITOR_TASK_ID" ]; then
+     # TaskStop 도구로 Monitor task 종료
+     # TaskStop({ task_id: "$MONITOR_TASK_ID" })
+     echo "🛑 Monitor task 종료: $MONITOR_TASK_ID"
+   fi
+   ```
+   > ⚠️ **이 단계는 생략 금지** — Monitor가 살아있으면 다른 Sprint 이벤트를 감지하여 노이즈 발생 (S272 교훈)
 
-7. **MEMORY.md 갱신**: Sprint 완료 기록 + 지표 업데이트
+7. **SPEC.md 갱신**: F-item 상태 🔧 → ✅
 
-7b. **CLAUDE.md 헤더 + 스킬 테이블 동기화**:
+8. **MEMORY.md 갱신**: Sprint 완료 기록 + 지표 업데이트
+
+8b. **CLAUDE.md 헤더 + 스킬 테이블 동기화**:
    ```bash
    # 1) 헤더 동기화 — SPEC.md 기반으로 "현재 상태" + Phase 상태 자동 갱신
    bash scripts/sync-claude-md.sh
@@ -414,9 +457,9 @@ PR을 merge하고 배포까지 진행한다.
    - 누락된 스킬이 있으면 CLAUDE.md에 추가 (description은 SKILL.md frontmatter에서 추출)
    - 삭제된 스킬은 CLAUDE.md에서 제거
 
-8. **CI/CD 결과 확인 + 헬스체크** (ax-session-end Phase 6과 동일)
+9. **CI/CD 결과 확인 + 헬스체크** (ax-session-end Phase 6과 동일)
 
-9. **Sprint clean (자동)**: `clean --quiet` 동일 로직 실행
+10. **Sprint clean (자동)**: `clean --quiet` 동일 로직 실행
    - merge 완료된 해당 Sprint의 WT/브랜치/remote ref/signal 정리
    - 추가로 과거 Sprint의 고아 리소스도 일괄 점검
    - 정리 건수 0이면 생략, 1건 이상이면 한 줄 요약 출력
@@ -427,12 +470,23 @@ Sprint worktree와 브랜치를 정리한다.
 > **참고**: Full Auto 모드에서는 merge-monitor가 cleanup까지 자동 수행한다.
 
 1. **Merge 확인**: master에 merge 안 됐으면 경고
-2. **Worktree 제거**: `git worktree remove`
-3. **로컬 브랜치 삭제**: merge 완료 시에만
-4. **리모트 브랜치 삭제**: `git push origin --delete sprint/$N`
-5. **tmux 세션 종료**: `tmux kill-session -t sprint-${PROJECT}-${N}`
-6. **Signal 파일 정리**: `/tmp/sprint-signals/${PROJECT}-${N}.signal` 삭제
-7. **전체 고아 점검 (자동)**: `clean --quiet` 동일 로직 실행 — 고아 WT/브랜치/ref 일괄 정리
+2. **Monitor TaskStop** (signal의 MONITOR_TASK_ID 사용):
+   ```bash
+   SIGNAL_FILE="/tmp/sprint-signals/${PROJECT}-${N}.signal"
+   MONITOR_TASK_ID=$(grep "^MONITOR_TASK_ID=" "$SIGNAL_FILE" 2>/dev/null | cut -d= -f2)
+   if [ -n "$MONITOR_TASK_ID" ]; then
+     # TaskStop 도구로 Monitor task 종료
+     # TaskStop({ task_id: "$MONITOR_TASK_ID" })
+     echo "🛑 Monitor task 종료: $MONITOR_TASK_ID"
+   fi
+   ```
+   > ⚠️ **이 단계는 생략 금지** — Monitor가 살아있으면 다른 Sprint 이벤트를 감지하여 노이즈 발생 (S272 교훈)
+3. **Worktree 제거**: `git worktree remove`
+4. **로컬 브랜치 삭제**: merge 완료 시에만
+5. **리모트 브랜치 삭제**: `git push origin --delete sprint/$N`
+6. **tmux 세션 종료**: `tmux kill-session -t sprint-${PROJECT}-${N}`
+7. **Signal 파일 정리**: `/tmp/sprint-signals/${PROJECT}-${N}.signal` 삭제
+8. **전체 고아 점검 (자동)**: `clean --quiet` 동일 로직 실행 — 고아 WT/브랜치/ref 일괄 정리
 
 ### `clean [--dry-run]`
 

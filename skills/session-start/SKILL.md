@@ -76,6 +76,39 @@ git rev-parse HEAD > "/tmp/claude-session-commit-pane${PANE_ID}"
 git status --porcelain | sort > "/tmp/claude-session-baseline-pane${PANE_ID}"
 ```
 
+### 5c. Stale Monitor 감지 + 정리 (Master 세션만)
+
+> **목적**: 이전 세션에서 완료된 Sprint의 Monitor task가 살아있으면 zombie로 남아 다른 Sprint 이벤트를 감지하는 노이즈 발생 (S272 교훈).
+> worktree 세션에서는 실행하지 않는다 (`.git`이 파일인 경우 건너뜀).
+
+```bash
+SIGNAL_DIR="/tmp/sprint-signals"
+if [ -d "$SIGNAL_DIR" ]; then
+  for SIGNAL in "$SIGNAL_DIR"/*.signal; do
+    [ -f "$SIGNAL" ] || continue
+
+    SIG_STATUS=$(grep "^STATUS=" "$SIGNAL" | cut -d= -f2)
+    SIG_NUM=$(grep "^SPRINT_NUM=" "$SIGNAL" | cut -d= -f2)
+    MONITOR_TASK_ID=$(grep "^MONITOR_TASK_ID=" "$SIGNAL" | cut -d= -f2)
+
+    # 완료된 Sprint (DONE/MERGED/FAILED)이면서 Monitor task ID가 있는 경우
+    if [ "$SIG_STATUS" = "DONE" ] || [ "$SIG_STATUS" = "MERGED" ] || [ "$SIG_STATUS" = "FAILED" ]; then
+      if [ -n "$MONITOR_TASK_ID" ]; then
+        echo "⚠️ Stale Monitor 감지: Sprint $SIG_NUM (status=$SIG_STATUS, monitor=$MONITOR_TASK_ID)"
+        # TaskStop 도구로 Monitor task 종료
+        # TaskStop({ task_id: "$MONITOR_TASK_ID" })
+        echo "  → Monitor task $MONITOR_TASK_ID 종료"
+        # signal에서 MONITOR_TASK_ID 제거 (중복 stop 방지)
+        sed -i "s/^MONITOR_TASK_ID=.*/MONITOR_TASK_ID=/" "$SIGNAL"
+      fi
+    fi
+  done
+fi
+```
+
+> **TaskList 활용 옵션**: 모든 활성 task를 조회하여 description이 "Sprint * signal"인 Monitor를 찾아서 signal 파일이 없거나 완료된 Sprint에 해당하면 TaskStop.
+> 단, TaskList 호출 비용이 있으므로 signal 파일 기반 스캔을 우선한다.
+
 ### 6. 세션 시작 안내
 
 Master: 프로젝트 상태 + 오늘 작업 + 관련 파일 + 활성 WT 목록.
