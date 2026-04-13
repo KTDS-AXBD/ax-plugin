@@ -1,5 +1,5 @@
 {
-  "description": "AX BD Team unified workflow hooks — session init, file protection, secret scan, doc meta, quality gate",
+  "description": "AX BD Team unified workflow hooks — session init, file protection, secret scan, doc meta, quality gate, usage log",
   "hooks": {
     "SessionStart": [
       {
@@ -35,6 +35,16 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/usage-log.sh",
+            "timeout": 5000
+          }
+        ]
+      },
       {
         "matcher": "Write|Edit",
         "hooks": [
