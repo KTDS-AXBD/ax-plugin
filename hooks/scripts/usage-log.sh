@@ -21,7 +21,7 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 PROJECT=$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo unknown)")
 
 for SKILL in "$@"; do
-  echo "{\"skill\":\"${SKILL}\",\"timestamp\":\"${TIMESTAMP}\",\"project\":\"${PROJECT}\"}" >> "$LOG_FILE"
+  echo "{\"skill\":\"${SKILL}\",\"ts\":\"${TIMESTAMP}\",\"project\":\"${PROJECT}\"}" >> "$LOG_FILE"
 done
 
 echo "Logged $# skill(s) to $LOG_FILE"
