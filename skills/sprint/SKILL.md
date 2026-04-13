@@ -113,6 +113,17 @@ TAB_TITLE="${PROJECT}: Sprint ${N} — ${F_ITEMS} ${F_TITLE}"
 > ⚠️ **Phase 2c는 반드시 실행한다** — 생략하면 WT 탭이 안 열려 사용자가 Sprint 진행을 볼 수 없다.
 > Phase 2 성공(bashrc sprint())이면 wt.exe가 sprint() 내부에서 호출되므로 2c 불필요.
 
+**Phase 2d: task-daemon 시작** (bashrc sprint() 실패 시 누락되는 _sprint_ensure_monitor 대체):
+```bash
+# bashrc sprint()는 마지막에 _sprint_ensure_monitor()를 호출하여 task-daemon을 시작한다.
+# 수동 fallback 경로에서는 이 호출이 누락되므로 직접 실행해야 한다.
+DAEMON_SCRIPT="$(git rev-parse --show-toplevel)/scripts/task/task-daemon.sh"
+if [ -f "$DAEMON_SCRIPT" ]; then
+  bash "$DAEMON_SCRIPT" --bg
+fi
+```
+> ⚠️ **Phase 2d도 반드시 실행한다** — 생략하면 signal 감지/merge 자동화가 동작하지 않는다 (S271 교훈).
+
 **Phase 3: Autopilot 주입** (`--manual` 미지정 시 자동):
 ```bash
 TMUX_SESSION="sprint-${PROJECT}-${N}"
