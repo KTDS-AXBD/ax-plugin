@@ -413,45 +413,59 @@ function calculateScorecard(prdContent, successResults, roundNum, outputDir) {
   // PRD에서 CHANGED 마커 제거 (키워드 매칭 방해 방지)
   const cleanPrd = prdContent.replace(/<!--\s*CHANGED:[^>]*-->\n?/g, "");
 
-  // ── 항목 1: 이슈 밀도 개선 (20점) ──
-  // v3: 절대 이슈 수 대신 이슈 밀도(이슈/1000자)로 비교 — PRD 확장 시 역인센티브 방지
-  const currentIssueCount = successResults.reduce(
-    (sum, r) =>
-      sum +
-      (r.parsed?.flaws?.length || 0) +
-      (r.parsed?.gaps?.length || 0) +
-      (r.parsed?.risks?.length || 0),
-    0
-  );
+  // ── 항목 1: 가중 이슈 밀도 (20점) ──
+  // v4: severity 가중치 적용 (flaw×3 + gap×1 + risk×1) + 라운드 간 품질 비교
+  const flawCount = successResults.reduce((s, r) => s + (r.parsed?.flaws?.length || 0), 0);
+  const gapCount = successResults.reduce((s, r) => s + (r.parsed?.gaps?.length || 0), 0);
+  const riskCount = successResults.reduce((s, r) => s + (r.parsed?.risks?.length || 0), 0);
+  const rawIssueCount = flawCount + gapCount + riskCount;
+  const weightedIssueCount = flawCount * 3 + gapCount * 1 + riskCount * 1;
   const prdLen = cleanPrd.length;
-  const currentDensity = prdLen > 0 ? (currentIssueCount / prdLen) * 1000 : 0;
+  const currentDensity = prdLen > 0 ? (weightedIssueCount / prdLen) * 1000 : 0;
+  const severityBreakdown = { flaws: flawCount, gaps: gapCount, risks: riskCount, weighted: weightedIssueCount, raw: rawIssueCount };
 
   let item1;
   if (roundNum <= 1) {
-    item1 = { score: 20, max: 20, reason: "초안 검토 — 스킵(만점)", skipped: true, totalIssues: currentIssueCount, density: Math.round(currentDensity * 10) / 10 };
+    item1 = { score: 20, max: 20, reason: "초안 검토 — 스킵(만점)", skipped: true, totalIssues: rawIssueCount, weightedIssues: weightedIssueCount, density: Math.round(currentDensity * 10) / 10, severityBreakdown };
   } else {
     const prevDir = outputDir.replace(`round-${roundNum}`, `round-${roundNum - 1}`);
     const prevPath = resolve(prevDir, "scorecard.json");
     let prevDensity = 0;
     let prevIssues = 0;
+    let prevBreakdown = null;
     if (existsSync(prevPath)) {
       try {
         const prev = JSON.parse(readFileSync(prevPath, "utf-8"));
         prevIssues = prev.item1?.totalIssues || 0;
         prevDensity = prev.item1?.density || 0;
+        prevBreakdown = prev.item1?.severityBreakdown || null;
       } catch {}
     }
-    // 밀도 기반 판정: 밀도 감소 = 개선, 밀도 증가 = 악화
+    // 가중 밀도 기반 판정: 밀도 감소 = 개선, 밀도 증가 = 악화
     const densityDelta = currentDensity - prevDensity;
     let score;
     if (densityDelta <= 0) score = 20;        // 밀도 감소 또는 동일 = 만점
     else if (densityDelta <= 1) score = 14;   // 소폭 증가
     else if (densityDelta <= 2) score = 8;    // 중간 증가
     else score = 0;                            // 대폭 증가
+
+    // 라운드 간 품질 변화 요약
+    let qualityTrend = "";
+    if (prevBreakdown) {
+      const flawDelta = flawCount - (prevBreakdown.flaws || 0);
+      const gapDelta = gapCount - (prevBreakdown.gaps || 0);
+      const riskDelta = riskCount - (prevBreakdown.risks || 0);
+      const parts = [];
+      if (flawDelta !== 0) parts.push(`flaw${flawDelta > 0 ? "+" : ""}${flawDelta}`);
+      if (gapDelta !== 0) parts.push(`gap${gapDelta > 0 ? "+" : ""}${gapDelta}`);
+      if (riskDelta !== 0) parts.push(`risk${riskDelta > 0 ? "+" : ""}${riskDelta}`);
+      qualityTrend = parts.length > 0 ? ` [${parts.join(", ")}]` : " [변화 없음]";
+    }
+
     item1 = {
       score, max: 20,
-      reason: `밀도 ${Math.round(currentDensity * 10) / 10}/1K자 (이전 ${Math.round(prevDensity * 10) / 10}, Δ${densityDelta > 0 ? "+" : ""}${Math.round(densityDelta * 10) / 10})`,
-      totalIssues: currentIssueCount, prevIssues, density: Math.round(currentDensity * 10) / 10, prevDensity: Math.round(prevDensity * 10) / 10
+      reason: `가중밀도 ${Math.round(currentDensity * 10) / 10}/1K자 (이전 ${Math.round(prevDensity * 10) / 10}, Δ${densityDelta > 0 ? "+" : ""}${Math.round(densityDelta * 10) / 10})${qualityTrend}`,
+      totalIssues: rawIssueCount, weightedIssues: weightedIssueCount, prevIssues, density: Math.round(currentDensity * 10) / 10, prevDensity: Math.round(prevDensity * 10) / 10, severityBreakdown
     };
   }
 
@@ -527,6 +541,7 @@ function calculateScorecard(prdContent, successResults, roundNum, outputDir) {
 
   const pad = (n) => String(n).padStart(2);
   const item1Reason = item1.skipped ? "(초안, 스킵)" : item1.reason;
+  const item1Severity = `flaw:${severityBreakdown.flaws} gap:${severityBreakdown.gaps} risk:${severityBreakdown.risks} (가중:${severityBreakdown.weighted})`;
   const item2Summary = readyDetails.map((d) => `${d.name}:${d.verdict}`).join(", ");
   // v3: grade별 상세 표시 (충실/최소/없음 구분)
   const item3Details = coverageChecks.map((c) => `${c.name}:${c.grade}(${c.score}/${c.max})`);
@@ -539,7 +554,8 @@ function calculateScorecard(prdContent, successResults, roundNum, outputDir) {
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     `📊 착수 충분도 스코어카드 — Round ${roundNum}`,
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    `항목 1: 신규 이슈 없음      [ ${pad(item1.score)} / 20 ]  ${item1Reason}`,
+    `항목 1: 가중 이슈 밀도      [ ${pad(item1.score)} / 20 ]  ${item1Reason}`,
+    `         severity 분포      ${item1Severity}`,
     `항목 2: Ready 판정 비율     [ ${pad(item2.score)} / 30 ]  ${item2Summary}`,
     `항목 3: 핵심 요소 커버리지  [ ${pad(item3.score)} / 30 ]  ${item3Summary}`,
     `항목 4: 다관점 반영 여부    [ ${pad(item4.score)} / 20 ]  ${item4Summary}`,

@@ -257,7 +257,7 @@ Read ~/.claude/skills/ax-req-interview/references/scorecard.md
 
 | 항목 | 데이터 소스 | 점수 |
 |------|-----------|------|
-| 1. 신규 이슈 없음 | AI 검토 결과 (flaws+gaps+risks) vs 이전 라운드 `scorecard.json` | 20점 |
+| 1. 가중 이슈 밀도 | AI 검토 결과 (flaw×3+gap×1+risk×1) 가중 밀도 vs 이전 라운드 | 20점 |
 | 2. Ready 판정 비율 | AI verdict (Ready=3, Conditional=1.5, Not Ready=0) 비율 환산 | 30점 |
 | 3. 핵심 요소 커버리지 | PRD 섹션 존재 + 내용 유무 (§2~§5) | 30점 |
 | 4. 다관점 반영 여부 | PRD 키워드 분석 (사용자/기술/비즈니스) | 20점 |
@@ -271,7 +271,8 @@ Read ~/.claude/skills/ax-req-interview/references/scorecard.md
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 착수 충분도 스코어카드 — Round {N}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-항목 1: 신규 이슈 없음      [ 20 / 20 ]  (초안, 스킵)
+항목 1: 가중 이슈 밀도      [ 20 / 20 ]  (초안, 스킵)
+         severity 분포      flaw:2 gap:3 risk:1 (가중:10)
 항목 2: Ready 판정 비율     [ 22 / 30 ]  ChatGPT:Ready, Gemini:Conditional, DeepSeek:Ready
 항목 3: 핵심 요소 커버리지  [ 26 / 30 ]  미달: Out-of-scope
 항목 4: 다관점 반영 여부    [ 20 / 20 ]  전관점 충족
