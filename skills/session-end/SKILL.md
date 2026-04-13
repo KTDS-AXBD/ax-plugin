@@ -29,6 +29,7 @@ allowed-tools:
 3c. GitHub Issues 동기화 (SPEC.md ↔ Issues 상태 일치)
 4. Auto Memory 갱신 (MEMORY.md)
 5. 문서 커밋
+5b. Skill Infra 점검 (sf-scan + sf-lint + drift, 스킬 변경 시만)
 6. Git push (CI/CD 자동 트리거)
 ```
 
@@ -245,10 +246,17 @@ Phase 0c-2에서 갱신한 SPEC.md "마지막 실측" 수치를 README.md와 랜
 
 **실행 절차:**
 
+0. **drift 감지 (필수)** — 스크립트로 drift 유무를 먼저 확인한다:
+   ```bash
+   bash scripts/content-sync-check.sh
+   ```
+   - exit 0 → "content sync: OK" 출력 후 이 Phase 건너뜀
+   - exit 1 → drift 목록 출력 → 아래 1~4 단계 진행
+   - exit 2 → SPEC.md 파싱 실패, 수동 확인 필요
 1. Phase 0c-2에서 수집한 ROUTES, SERVICES, SCHEMAS, D1_LATEST, SPRINT 값을 사용
 2. 4개 파일 각각에서 현재 수치를 Grep으로 추출
 3. 불일치 항목만 Edit으로 수정
-4. 변경사항은 Phase 5 (문서 커밋)에 포함
+4. 랜딩 3파일(hero.md, landing.tsx, footer.tsx) 변경은 `packages/web/` 코드이므로 **별도 PR 경로**로 커밋. README.md 변경은 Phase 5 (문서 커밋)에 포함
 
 **보정 범위:**
 - README.md: `README_SYNC_START` ~ `README_SYNC_END` 마커 블록 내부만
@@ -704,6 +712,52 @@ Auto Memory 디렉토리의 MEMORY.md를 업데이트:
 ```bash
 git add SPEC.md docs/CHANGELOG.md  # 존재하는 파일만
 git commit -m "docs: update SPEC.md + CHANGELOG — 세션 NNN [요약]"
+```
+
+### Phase 5b: Skill Infra 점검 (자동, 조건부)
+
+> Self-Evolving Harness 원칙 4 "측정 없이 진화 없다" 적용.
+> 이 세션에서 스킬 파일(.claude/skills/, .claude/rules/, .claude/agents/)이 변경된 경우에만 실행.
+
+**변경 감지:**
+```bash
+SKILL_CHANGED=$(git diff --cached --name-only -- '.claude/skills/' '.claude/rules/' '.claude/agents/' 2>/dev/null | wc -l)
+# Phase 5 커밋 이전이면 unstaged도 확인
+[ "$SKILL_CHANGED" -eq 0 ] && SKILL_CHANGED=$(git diff --name-only HEAD~3..HEAD -- '.claude/skills/' '.claude/rules/' '.claude/agents/' 2>/dev/null | wc -l)
+```
+
+**스킬 변경이 있을 때 (SKILL_CHANGED > 0):**
+
+1. **sf-scan** — 카탈로그 갱신:
+   ```bash
+   SF_SCAN=$(find ~/.claude-work/.claude/plugins/cache -path "*/skill-framework*/scripts/scan.mjs" 2>/dev/null | head -1)
+   [ -n "$SF_SCAN" ] && node "$SF_SCAN" 2>/dev/null | tail -5
+   ```
+
+2. **sf-lint** — 품질 검증 (Discriminator 역할):
+   ```bash
+   SF_LINT=$(find ~/.claude-work/.claude/plugins/cache -path "*/skill-framework*/scripts/lint.mjs" 2>/dev/null | head -1)
+   [ -n "$SF_LINT" ] && node "$SF_LINT" 2>/dev/null | tail -10
+   ```
+   - Error 0건: PASS
+   - Error > 0: WARN 출력 (push는 차단하지 않음 — 정보 제공)
+
+3. **source↔cache drift** — 3 플러그인 동기화 확인:
+   ```bash
+   AX_SRC=~/.claude/plugins/marketplaces/ax-marketplace/skills
+   AX_CACHE=~/.claude/plugins/cache/ax-marketplace/ax/*/skills
+   DRIFT=$(diff -rq "$AX_SRC" $AX_CACHE 2>/dev/null | wc -l)
+   ```
+   - drift > 0: WARN + 파일 목록 출력
+
+**스킬 변경이 없을 때:** "⏭️ 스킬 파일 변경 없음 — Phase 5b 건너뜀"
+
+**결과 요약 (최종 요약에 포함):**
+```
+### Skill Infra
+- sf-scan: N skills cataloged / ⏭️ 건너뜀
+- sf-lint: 0 errors, N warnings / ⏭️ 건너뜀
+- drift: 0 / N건 감지 (source↔cache)
 ```
 
 ### Phase 6: Git Push + 배포 점검 (필수)

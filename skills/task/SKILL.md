@@ -243,7 +243,23 @@ bash scripts/task/task-watch.sh --once            # 1회 점검 후 종료
 4. watch 로그 확인: `tail -20 /tmp/task-signals/watch-*.log`
 5. 이슈 발견 시 자동 복구 또는 사용자 안내
 
-### H. 세션 시작 시 자동 동작
+### H. WT 완료 전 자동 검증 가이드
+
+WT pane의 Claude 세션이 `task-complete.sh` 호출 전에 최소 검증을 수행하도록 안내한다.
+auto-inject 프롬프트에 아래 내용이 자동 포함된다:
+
+- **코드 검증**: `turbo typecheck && turbo test` (또는 `/ax:code-verify`)
+- **TDD 확인** (`.claude/rules/tdd-workflow.md` 존재 시): Red→Green 커밋 분리 여부
+- **커밋 정리**: 미커밋 변경이 있으면 커밋 후 push
+
+task-start.sh의 auto-inject가 이 가이드를 포함하도록 prompt를 구성할 때, track별 기본 프롬프트 끝에 아래를 추가한다:
+
+```
+완료 전 반드시 코드 검증을 실행해: turbo typecheck && turbo test
+.claude/rules/tdd-workflow.md가 있으면 TDD Red→Green 순서를 따라.
+```
+
+### I. 세션 시작 시 자동 동작
 
 `/ax:session-start` 시 task 데몬(monitor + watch)이 실행 중인지 자동 확인.
 중단 상태면 agent-manage --health로 자동 재시작.

@@ -40,6 +40,42 @@ echo "Turbo: $(npx turbo --version 2>/dev/null || echo 'not found')"
 - `node` 미설치 → 보정 불가, 안내
 - `pnpm` 미설치 → `npm install -g pnpm` 제안
 
+### 1b. tmux 서버 바이너리 점검
+
+> tmux는 클라이언트-서버 구조. `~/.local/bin/tmux`에 3.5a를 설치해도 기존 서버 프로세스는
+> 구 바이너리(/usr/bin/tmux 3.4)로 계속 실행된다. 바이너리 교체 후 `tmux kill-server`를
+> 하지 않으면 segfault 위험이 남아 있다. (feedback_tmux34_bug.md 참조)
+
+```bash
+echo "=== tmux Server Binary ==="
+CLIENT_BIN=$(which tmux 2>/dev/null)
+CLIENT_VER=$(tmux -V 2>/dev/null || echo "not found")
+echo "Client: $CLIENT_BIN → $CLIENT_VER"
+
+# 서버 프로세스의 실제 바이너리 확인
+SERVER_PID=$(pgrep -a tmux 2>/dev/null | grep -E 'new-session|server' | head -1 | awk '{print $1}')
+if [ -n "$SERVER_PID" ]; then
+  SERVER_BIN=$(readlink /proc/$SERVER_PID/exe 2>/dev/null || echo "unknown")
+  echo "Server PID: $SERVER_PID → $SERVER_BIN"
+  if [ "$CLIENT_BIN" != "$SERVER_BIN" ] && [ "$SERVER_BIN" != "unknown" ]; then
+    echo "MISMATCH: client=$CLIENT_BIN server=$SERVER_BIN"
+  else
+    echo "Match: OK"
+  fi
+else
+  echo "No tmux server running (skip)"
+fi
+```
+
+**자동 보정:**
+- 불일치 시 → **보정 안 함** (kill-server는 활성 세션을 모두 종료하므로 위험), WARN + `tmux kill-server` 후 재기동 안내
+- 서버 바이너리가 `/usr/bin/tmux` (3.4) → "segfault 위험, 세션 정리 후 kill-server 필수" 경고
+
+**결과 테이블 행:**
+```
+| tmux Server | OK/WARN | client=X server=Y (match/mismatch) |
+```
+
 ### 2. Git 동기화 상태
 
 ```bash
@@ -332,6 +368,46 @@ fi
 | 랜딩 footer | OK/WARN | N drift(s) found, M auto-fixed |
 ```
 
+### 6d. Plugin Source↔Cache Drift (full 모드만)
+
+> Self-Evolving Harness 원칙: "측정 없이 진화 없다" — 스킬 인프라 상태도 점검 대상.
+
+ax/bkit/skill-framework 3개 플러그인의 source↔cache 동기화 확인.
+
+```bash
+echo "=== Plugin Drift ==="
+TOTAL_DRIFT=0
+
+# ax plugin
+AX_SRC=~/.claude/plugins/marketplaces/ax-marketplace/skills
+AX_CACHE=$(ls -d ~/.claude/plugins/cache/ax-marketplace/ax/*/skills 2>/dev/null | tail -1)
+if [ -n "$AX_CACHE" ] && [ -d "$AX_SRC" ]; then
+  AX_DRIFT=$(diff -rq "$AX_SRC" "$AX_CACHE" 2>/dev/null | wc -l)
+  TOTAL_DRIFT=$((TOTAL_DRIFT + AX_DRIFT))
+  echo "ax: drift=$AX_DRIFT"
+fi
+
+# bkit plugin
+BKIT_SRC=~/.claude-work/.claude/plugins/marketplaces/bkit-marketplace/skills
+BKIT_CACHE=$(ls -d ~/.claude-work/.claude/plugins/cache/bkit-marketplace/bkit/*/skills 2>/dev/null | tail -1)
+if [ -n "$BKIT_CACHE" ] && [ -d "$BKIT_SRC" ]; then
+  BKIT_DRIFT=$(diff -rq "$BKIT_SRC" "$BKIT_CACHE" 2>/dev/null | wc -l)
+  TOTAL_DRIFT=$((TOTAL_DRIFT + BKIT_DRIFT))
+  echo "bkit: drift=$BKIT_DRIFT"
+fi
+
+echo "total drift: $TOTAL_DRIFT"
+```
+
+**자동 보정:**
+- drift > 0: WARN + 파일 목록 출력 + "source→cache rsync 또는 /plugin 재설치 권장"
+- drift = 0: PASS
+
+**결과 테이블 행:**
+```
+| Plugin Drift | OK/WARN | ax=N bkit=M total=K |
+```
+
 ### 7. 디스크/캐시 정리 (full 모드만)
 
 ```bash
@@ -357,6 +433,7 @@ echo "Playwright report: $PW_REPORT, results: $PW_RESULTS"
 | 항목 | 결과 | 상세 |
 |------|------|------|
 | Runtime | OK/WARN | node X, pnpm Y |
+| tmux Server | OK/WARN | client=X server=Y (match/mismatch) |
 | Git Sync | OK/WARN/ERR | ahead=N behind=M dirty=K |
 | Worktree | OK/WARN | 활성 N개, 고아 M개, dirty K개 |
 | Branch | OK/WARN | stale N개 정리, orphan M개 감지 |
@@ -371,6 +448,7 @@ echo "Playwright report: $PW_REPORT, results: $PW_RESULTS"
 | 랜딩 hero.md | OK/WARN | N drift(s) found, M auto-fixed |
 | 랜딩 fallback | OK/WARN | N drift(s) found, M auto-fixed |
 | 랜딩 footer | OK/WARN | N drift(s) found, M auto-fixed |
+| Plugin Drift | OK/WARN | ax=N bkit=M total=K |
 | Disk/Cache | INFO | turbo XMB, playwright YMB |
 
 ### 자동 보정 수행

@@ -167,6 +167,22 @@ $PM typecheck 2>&1 || $PM tsc --noEmit 2>&1
 3. 변경 파일의 개별 커버리지 %
 4. 커버리지가 낮은 변경 파일에 대해 테스트 추가 제안
 
+### 6b. Skill Lint (스킬 파일 변경 시만)
+
+`.claude/skills/` 하위 파일이 변경 파일 목록(Step 2)에 포함된 경우에만 실행.
+
+```bash
+SKILL_FILES=$(echo "$CHANGED_FILES" | grep -c '\.claude/skills/' || true)
+if [ "$SKILL_FILES" -gt 0 ]; then
+  SF_LINT=$(find ~/.claude-work/.claude/plugins/cache -path "*/skill-framework*/scripts/lint.mjs" 2>/dev/null | head -1)
+  [ -n "$SF_LINT" ] && node "$SF_LINT" 2>/dev/null
+fi
+```
+
+- Error 0: PASS
+- Error > 0: WARN + 상세 (자동 수정은 `--fix` 플래그 검토 — 현재는 정보 제공만)
+- 스킬 파일 변경 없음: SKIP
+
 ### 7. 결과 출력
 
 ```
@@ -178,6 +194,7 @@ $PM typecheck 2>&1 || $PM tsc --noEmit 2>&1
 | ESLint | ✅/❌ | N errors (M 자동 수정) |
 | TypeScript | ✅/❌ | N errors |
 | Test | ✅/❌ | N passed / M failed / K skipped |
+| Skill Lint | ✅/⚠️/⏭️ | N errors, M warnings / 스킬 변경 없음 |
 | Coverage | --% | (coverage 모드만) |
 
 - 실행 대상: {관련 테스트 N개} / 전체 {M개}

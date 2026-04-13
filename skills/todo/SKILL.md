@@ -311,20 +311,29 @@ AskUserQuestion으로 최종 확인 후:
 2. SPEC.md §6에 Sprint Execution Plan 섹션 추가
 3. 커밋 + push (WT 생성을 위한 사전 조건)
 
-### 6c. 실행 안내
+### 6c. 실행 연동
+
+계획 완료 후 AskUserQuestion으로 즉시 실행 여부를 확인한다:
 
 ```
 ## ✅ 계획 완료
 
-Pipeline이 구성됐어요. 실행 순서:
+Pipeline이 구성됐어요. 바로 실행할까요?
 
-1. Plan/Design 문서 작성 (각 Sprint별)
-2. `/ax:sprint-pipeline 243 244` — Batch 1 병렬 실행
-3. Batch 1 완료 후 `/ax:sprint-pipeline 245` — Batch 2 실행
-
-> 💡 Plan/Design을 한 번에 작성하려면 각 Sprint에 대해
-> `/pdca plan F{번호}` → `/pdca design F{번호}` 순서로 진행하세요.
+1. 지금 바로 Batch 1 실행 (Recommended)
+   → SPEC 등록 커밋 + `/ax:sprint-pipeline 243 244` 자동 실행
+2. 계획만 확인 — 나중에 수동 실행
+   → SPEC 등록 커밋까지만. 실행은 사용자가 직접.
+3. 단일 Sprint만 먼저 실행
+   → `/ax:sprint 243` 하나만 즉시 시작
 ```
+
+**옵션 1 선택 시 자동 실행 흐름:**
+1. SPEC.md F-item 등록 → 커밋 → push (사전 조건)
+2. Skill 도구로 `/ax:sprint-pipeline {번호들}` 자동 호출
+3. sprint-pipeline이 WT 생성 → autopilot 주입 → merge-monitor 감시까지 자동 진행
+
+> 💡 단일 Sprint만 있으면 `/ax:sprint N`으로 직접 연결한다.
 
 ---
 
