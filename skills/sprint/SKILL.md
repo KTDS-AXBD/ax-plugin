@@ -160,34 +160,38 @@ TIMESTAMP=$(date -Iseconds)
 SIGNAL
 ```
 
-**Phase 5: Merge Monitor 시작** (background, **별도 Bash tool 호출 필수**):
+**Phase 5: task-daemon 생존 확인 + Monitor 도구 시작**:
 
-> ⚠️ **중요: merge-monitor와 status-monitor는 반드시 별도의 `run_in_background` Bash 호출로 실행한다.**
-> 하나의 Bash 호출에 `&`로 묶으면 부모 프로세스 종료 시 자식도 함께 종료될 수 있다.
-> `nohup` + `disown`으로 프로세스를 완전 분리한다.
+> C42 통합 (2026-04-12): 구 `sprint-merge-monitor.sh` + `sprint-status-monitor.sh`는 **DEPRECATED**.
+> `task-daemon.sh`가 sprint signal 감지 + merge + cleanup을 모두 처리한다.
+> Phase 2d에서 daemon을 시작했으므로, 여기서는 **생존 확인만** 수행한다.
 
-**merge-monitor** (Bash tool, `run_in_background: true`):
+**Phase 5a: daemon 생존 확인**:
 ```bash
-nohup bash ~/scripts/sprint-merge-monitor.sh > /tmp/sprint-signals/merge-monitor-${N}.log 2>&1 &
-disown
-echo "✅ merge-monitor PID: $!"
+DAEMON_SCRIPT="$(git rev-parse --show-toplevel)/scripts/task/task-daemon.sh"
+# daemon이 실행 중인지 확인
+if ps aux | grep -q "[t]ask-daemon.sh"; then
+  echo "✅ task-daemon 실행 중"
+else
+  echo "⚠️ task-daemon 미실행 — 재시작"
+  bash "$DAEMON_SCRIPT" --bg
+fi
 ```
 
-**status-monitor** (Bash tool, `run_in_background: true`):
-```bash
-nohup bash ~/scripts/sprint-status-monitor.sh 45 60 > /tmp/sprint-signals/status-monitor-${N}.log 2>&1 &
-disown
-echo "✅ status-monitor PID: $!"
+**Phase 5b: Monitor 도구 시작** (sprint-ops.md Rule #1 준수):
+> ⚠️ **반드시 Monitor 도구를 시작한다.** 3회 이상 위반 지적된 항목 (S256, S266, S268).
+> daemon은 백그라운드로 동작하지만, Master 세션에서 진행 상황을 관찰하려면 Monitor 도구가 필요하다.
+
+```
+Monitor(
+  description: "Sprint $N signal + daemon log",
+  persistent: true,
+  command: "tail -f /tmp/task-signals/daemon-${PROJECT}.log /tmp/sprint-signals/${PROJECT}-${N}.signal 2>/dev/null"
+)
 ```
 
-**Phase 5b: Monitor 생존 확인** (Phase 5 직후):
-```bash
-sleep 2
-ps aux | grep -E "sprint-merge-monitor|sprint-status-monitor" | grep -v grep | wc -l
-# 2 이상이면 정상. 0이면 재시작 필요
-```
-> merge-monitor는 signal 파일에서 STATUS=DONE을 감지하면:
-> review → PR merge → D1 migration → Workers deploy → health check → WT cleanup 자동 수행
+> task-daemon `phase_sprint_signals()` 동작:
+> signal STATUS=DONE 감지 → PR 조회 → CI 대기 → squash merge → WT/브랜치 cleanup → board sync → velocity 기록
 
 **Phase 6: 안내 출력**:
 ```
@@ -199,12 +203,13 @@ ps aux | grep -E "sprint-merge-monitor|sprint-status-monitor" | grep -v grep | w
 | Directory | ~/work/worktrees/$PROJECT/sprint-$N |
 | F-items | F273 |
 | Autopilot | ✅ 주입 완료 |
-| Status Monitor | ✅ background (45s 간격) |
-| Merge Monitor | ✅ background (15s 간격) |
+| task-daemon | ✅ PID NNNN (signal + merge 통합) |
+| Monitor | ✅ daemon log + signal tail |
 
 ### 자동 프로세스
 WT: Plan → Design → Implement → Analyze → Report → push → signal
-Master: signal 감지 → review → PR merge → D1 → deploy → SPEC ✅ → cleanup
+daemon: signal DONE 감지 → PR merge → D1 → deploy → WT cleanup
+Master: Monitor로 진행 관찰, SPEC 🔧→✅ 갱신
 
 Master 세션은 다른 작업을 진행할 수 있어요.
 진행 확인: `/ax:sprint monitor $N`
@@ -597,6 +602,7 @@ Manual (--manual):
 - **SPEC 커밋+push는 WT 생성 전에 완료** — 미커밋 SPEC으로 WT 생성 시 drift (S149 교훈)
 - Sprint 탭에서 `/ax:session-end`를 실행하면 **sprint 브랜치에 push** (master가 아님)
 - 여러 Sprint를 동시에 열 수 있지만, 같은 파일을 수정하면 merge 시 충돌 가능
-- merge-monitor는 D1/deploy를 자동 실행하므로 **WSL에서 wrangler 금지** 설정과 충돌 가능 — 프로젝트에 wrangler.toml이 없으면 D1/deploy 단계는 자동 스킵됨
+- **구 모니터 스크립트 DEPRECATED (C42, 2026-04-12)**: `sprint-merge-monitor.sh`, `sprint-status-monitor.sh`는 `task-daemon.sh`로 통합됨. `~/scripts/` 경로로 호출하지 말 것
+- task-daemon은 D1/deploy를 자동 실행하므로 **WSL에서 wrangler 금지** 설정과 충돌 가능 — 프로젝트에 wrangler.toml이 없으면 D1/deploy 단계는 자동 스킵됨
 - `ccs` vs `ccw`: ccs는 skip-perms 모드. autopilot에서 signal을 직접 생성하므로 ccw의 post-session 불필요
 - **WT 모델**: 기본 Sonnet (`ccs --model sonnet`). Master=Opus, WT=Sonnet으로 역할 분리. 복잡한 Sprint는 `--model opus`로 오버라이드 가능
