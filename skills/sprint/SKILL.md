@@ -62,17 +62,56 @@ Sprint worktree를 생성하고 **기본적으로 autopilot + 모니터링까지
 3. `git add SPEC.md && git commit && git push origin master`
    - ⚠️ **WT 생성 전에 반드시 push 완료** (S149 교훈: 미커밋 SPEC으로 WT 생성 시 drift)
 
-**Phase 2: WT 생성** (bash `sprint` 함수 사용 필수):
+**Phase 2: WT 생성** (3단계 — bashrc sprint() 실패 시 수동 fallback 포함):
+
+> Claude Code Bash tool은 non-TTY라 `bash -i -c "sprint N"`이 실패할 수 있다 (S271 교훈).
+> 실패 시 Phase 2a→2b→2c 수동 fallback 경로를 사용한다.
+
+**Phase 2 시도**: bashrc sprint() 함수 호출
 ```bash
-# ⚠️ 반드시 bashrc의 sprint() 함수를 사용할 것
-# 직접 git worktree add + wt.exe 호출 금지 (경로/tmux/배너 불일치)
 bash -i -c "sprint $N"
 ```
-이 명령이 자동으로 수행하는 작업:
-- `~/work/worktrees/{project}/sprint-{N}` 에 worktree 생성
-- `sprint/{N}` 브랜치 생성
-- `wt-claude-worktree.sh` 실행 → tmux 세션 `sprint-{project}-{N}` 생성
-- Windows Terminal 새 탭 열기 (tmux 기반, 배너+ccs/ccw 래퍼 포함)
+
+**Phase 2 실패 시 → Phase 2a~2c 수동 fallback**:
+
+**Phase 2a: Worktree 생성** (git worktree 직접 사용):
+```bash
+export CLAUDE_WT_BASE=/home/sinclair/work/worktrees
+PROJECT=$(basename "$(git rev-parse --show-toplevel)")
+BRANCH="sprint/${N}"
+WT_DIR="$CLAUDE_WT_BASE/$PROJECT/sprint-${N}"
+
+mkdir -p "$CLAUDE_WT_BASE/$PROJECT"
+if git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
+  git worktree add "$WT_DIR" "$BRANCH"
+else
+  git worktree add -b "$BRANCH" "$WT_DIR" HEAD
+fi
+```
+
+**Phase 2b: tmux 세션 생성** (배너 + exec bash 대기):
+```bash
+# F-item 정보 추출
+F_ITEMS=$(awk -F'|' -v s="Sprint ${N}" '$4 ~ s {match($2,/F[0-9]+/); print substr($2,RSTART,RLENGTH)}' SPEC.md 2>/dev/null | paste -sd, -)
+F_TITLE=$(grep "| ${F_ITEMS%%,*} |" SPEC.md 2>/dev/null | head -1 | \
+  awk -F'|' '{print $3}' | sed 's/^ *//' | sed 's/ —.*//' | sed 's/ (FX-REQ.*//' | head -c 25)
+SAFE_TITLE=$(echo "$F_TITLE" | tr ':/' '__')
+SESSION_NAME="sprint-${N} ${F_ITEMS} ${SAFE_TITLE}"
+BANNER_TITLE="${PROJECT} · Sprint ${N} — ${F_TITLE}"
+
+tmux new-session -d -s "$SESSION_NAME" -c "$WT_DIR" -e HOME=/home/sinclair \
+  "bash -i -l -c 'printf \"\n\033[1;36m🌳 ${BANNER_TITLE}\033[0m\n──────────────────────────\n  \033[33mBranch\033[0m   ${BRANCH}\n  \033[33mF-items\033[0m  ${F_ITEMS:-없음}\n──────────────────────────\n  \033[33mccs\033[0m   ccs --model sonnet\n──────────────────────────\n\"; exec bash'"
+```
+
+**Phase 2c: Windows Terminal 탭 열기** (tmux attach):
+```bash
+WTE="/mnt/c/Users/sincl/AppData/Local/Microsoft/WindowsApps/wt.exe"
+TAB_TITLE="${PROJECT}: Sprint ${N} — ${F_ITEMS} ${F_TITLE}"
+"$WTE" -w 0 new-tab --title "$TAB_TITLE" --suppressApplicationTitle \
+  -- wsl.exe -d Ubuntu-24.04 bash -lic "tmux attach -t \"$SESSION_NAME\""
+```
+> ⚠️ **Phase 2c는 반드시 실행한다** — 생략하면 WT 탭이 안 열려 사용자가 Sprint 진행을 볼 수 없다.
+> Phase 2 성공(bashrc sprint())이면 wt.exe가 sprint() 내부에서 호출되므로 2c 불필요.
 
 **Phase 3: Autopilot 주입** (`--manual` 미지정 시 자동):
 ```bash
