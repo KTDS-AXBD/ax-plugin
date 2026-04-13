@@ -1,10 +1,6 @@
 ---
 name: git-team
-description: |
-  Agent Teams를 tmux in-window split에서 병렬 수행한다.
-  리더 pane 옆에 worker pane이 직접 보이며, 인터랙티브 모드로 실시간 도구 사용 현황이 표시된다.
-  완료 후 DONE 마커 자동 기록 + 원래 레이아웃으로 자동 복원.
-  Use when: agent team, 병렬 작업, worker, tmux, 팀 작업, parallel agents
+description: "Agent Teams를 tmux in-window split에서 병렬 수행한다. 리더 pane 옆에 worker pane이 직접 보이며, 인터랙티브 모드로 실시간 도구 사용 현황이 표시된다. 완료 후 DONE 마커 자동 기록 + 원래 레이아웃으로 자동 복원. Use when: agent team, 병렬 작업, worker, tmux, 팀 작업"
 argument-hint: "<작업 설명>"
 user-invocable: true
 allowed-tools:

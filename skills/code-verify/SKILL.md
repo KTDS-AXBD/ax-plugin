@@ -1,11 +1,6 @@
 ---
 name: code-verify
-description: |
-  코드 검증 — lint + typecheck + test를 한 번에 실행한다.
-  프레임워크 자동 감지 (vitest/jest/pytest/go test).
-  변경 파일 관련 테스트만 실행, 실패 시 자동 수정 시도.
-  서브커맨드: lint, typecheck, test, coverage, watch, all(기본).
-  Use when: 코드 검증, lint, typecheck, test, 테스트, 빌드 확인, verify
+description: "코드 검증 — lint + typecheck + test를 한 번에 실행한다. 프레임워크 자동 감지 (vitest/jest/pytest/go test). 변경 파일 관련 테스트만 실행, 실패 시 자동 수정 시도. 서브커맨드: lint, typecheck, test, coverage, watch, all(기본). Use when: 코드 검증, lint, typecheck, test, verify"
 argument-hint: "[all|lint|typecheck|test|coverage|watch]"
 user-invocable: true
 allowed-tools:

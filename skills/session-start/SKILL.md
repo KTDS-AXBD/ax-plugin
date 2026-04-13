@@ -1,9 +1,6 @@
 ---
 name: session-start
-description: |
-  세션 시작 시 프로젝트 컨텍스트를 복원한다.
-  Auto Memory(MEMORY.md)에서 즉시 맥락 파악 후, SPEC.md 핵심 섹션만 보충 읽기.
-  Use when: 세션 시작, 컨텍스트 복원, session start, 시작, 맥락 파악
+description: "세션 시작 시 프로젝트 컨텍스트를 복원한다. Auto Memory(MEMORY.md)에서 즉시 맥락 파악 후, SPEC.md 핵심 섹션만 보충 읽기. Use when: 세션 시작, 컨텍스트 복원, session start, 시작"
 argument-hint: "[오늘 작업 또는 F항목]"
 user-invocable: true
 allowed-tools:

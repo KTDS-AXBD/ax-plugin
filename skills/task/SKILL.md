@@ -1,9 +1,6 @@
 ---
 name: task
-description: |
-  Task Orchestrator — Master pane 기반 F/B/C/X 4트랙 task 실행 + Agent 오케스트레이션.
-  `/ax:task start` task 생성, `plan` 분류, `manage` 대시보드, `test` 검증, `loop` 연속실행.
-  Use when: task start, task 등록, task list, 작업 시작, /ax:task, 대시보드, 작업 현황, 작업 점검, 건강 점검, 테스트, 작업 계획, 큐, 연속 실행
+description: "Task Orchestrator — Master pane 기반 F/B/C/X 4트랙 task 실행 + Agent 오케스트레이션. /ax:task start task 생성, plan 분류, manage 대시보드, test 검증, loop 연속실행. Use when: task start, task 등록, task list, 작업 시작, 대시보드"
 argument-hint: "start|list|plan|manage|test|loop|doctor"
 user-invocable: true
 allowed-tools:

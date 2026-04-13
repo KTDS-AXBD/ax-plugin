@@ -1,10 +1,6 @@
 ---
 name: req-integrity
-description: |
-  요구사항 정합성 검증 — SPEC ↔ GitHub Issues ↔ Execution Plan 3-way 비교.
-  드리프트 감지, 불일치 보정, 수치 검증을 한 번에 수행한다.
-  요구사항 관리 표준(~/.claude/standards/requirements-governance.md) 기반.
-  Use when: 정합성, integrity, drift, SPEC 불일치, 3-way 비교, 요구사항 검증
+description: "요구사항 정합성 검증 — SPEC ↔ GitHub Issues ↔ Execution Plan 3-way 비교. 드리프트 감지, 불일치 보정, 수치 검증을 한 번에 수행한다. 요구사항 관리 표준(~/.claude/standards/requirements-governance.md) 기반. Use when: 정합성, integrity, drift, SPEC 불일치, 3-way 비교"
 argument-hint: "[check|fix|report]"
 user-invocable: true
 allowed-tools:

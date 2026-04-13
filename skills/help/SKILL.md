@@ -1,8 +1,6 @@
 ---
 name: help
-description: |
-  ax 스킬셋 사용 가이드 — 24개 스킬의 용도, 서브커맨드, 실전 사례 안내.
-  Use when: ax help, ax 도움말, 스킬 목록, 사용법, ax commands, 뭐가 있어
+description: "ax 스킬셋 사용 가이드 — 24개 스킬의 용도, 서브커맨드, 실전 사례 안내. Use when: ax help, ax 도움말, 스킬 목록, 사용법, ax commands, 뭐가 있어"
 argument-hint: "[스킬명]"
 user-invocable: true
 allowed-tools:

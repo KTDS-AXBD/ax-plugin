@@ -1,9 +1,6 @@
 ---
 name: gov-version
-description: |
-  버전 관리 — 현재 버전 상태 확인, 범프, 태그 생성, 일관성 검증.
-  GOV-002 버전 관리 표준 기반.
-  Use when: 버전, version bump, 태그, tag, semver, 버전 확인
+description: "버전 관리 — 현재 버전 상태 확인, 범프, 태그 생성, 일관성 검증. GOV-002 버전 관리 표준 기반. Use when: 버전, version bump, 태그, tag, semver"
 argument-hint: "[status|bump|tag|check]"
 user-invocable: true
 allowed-tools:

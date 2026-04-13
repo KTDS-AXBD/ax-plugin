@@ -1,9 +1,6 @@
 ---
 name: gov-doc
-description: |
-  문서 관리 — 새 문서 생성, 인덱스 갱신, 버전 관리, 아카이브, 메타데이터 검증.
-  GOV-001 문서 관리 표준 기반.
-  Use when: 문서 생성, 인덱스 갱신, 아카이브, 문서 관리, doc management, INDEX.md
+description: "문서 관리 — 새 문서 생성, 인덱스 갱신, 버전 관리, 아카이브, 메타데이터 검증. GOV-001 문서 관리 표준 기반. Use when: 문서 생성, 인덱스 갱신, 아카이브, 문서 관리, INDEX.md"
 argument-hint: "[new|index|version|archive|check]"
 user-invocable: true
 allowed-tools:

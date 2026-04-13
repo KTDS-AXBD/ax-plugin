@@ -1,9 +1,6 @@
 ---
 name: session-end
-description: |
-  세션 종료 시 코드 커밋 + 문서 갱신 + git push + CI/CD 배포.
-  프로젝트에 맞게 동작: SPEC.md/CHANGELOG.md가 있으면 갱신, 없으면 건너뜀.
-  Use when: 세션 종료, 마무리, session end, 끝, 커밋하고 푸시, wrap up
+description: "세션 종료 시 코드 커밋 + 문서 갱신 + git push + CI/CD 배포. 프로젝트에 맞게 동작: SPEC.md/CHANGELOG.md가 있으면 갱신, 없으면 건너뜀. Use when: 세션 종료, 마무리, session end, 끝, wrap up"
 argument-hint: "[추가 메모]"
 user-invocable: true
 allowed-tools:

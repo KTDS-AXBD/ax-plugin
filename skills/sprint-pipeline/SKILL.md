@@ -1,6 +1,6 @@
 ---
 name: sprint-pipeline
-description: Master에서 복수 Sprint를 의존성 분석→배치 병렬 실행→자동 merge 파이프라인 오케스트레이션
+description: "Master에서 복수 Sprint를 의존성 분석→배치 병렬 실행→자동 merge 파이프라인 오케스트레이션. Use when: pipeline, 배치 스프린트, 병렬 Sprint"
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill, AskUserQuestion
 argument-hint: "<N,N,...> [--resume] [--dry-run]"

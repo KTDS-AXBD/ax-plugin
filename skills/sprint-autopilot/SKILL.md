@@ -1,6 +1,6 @@
 ---
 name: sprint-autopilot
-description: Sprint WT 전체 자동화 — Plan→Design→Implement→Analyze→Report→Session-End
+description: "Sprint WT 전체 자동화 — Plan→Design→Implement→Analyze→Report→Session-End. Use when: autopilot, 자동화, Sprint WT 전체 자동화"
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill, AskUserQuestion
 argument-hint: "<N> [--resume] [--dry-run]"

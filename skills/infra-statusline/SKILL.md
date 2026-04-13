@@ -1,9 +1,6 @@
 ---
 name: infra-statusline
-description: |
-  StatusLine 요구사항 표시를 관리한다.
-  현재 tmux pane의 REQ 표시를 설정하거나 지운다.
-  Use when: statusline, REQ 표시, tmux pane title, 요구사항 표시
+description: "StatusLine 요구사항 표시를 관리한다. 현재 tmux pane의 REQ 표시를 설정하거나 지운다. Use when: statusline, REQ 표시, tmux pane title"
 argument-hint: "[set <F항목 제목>|clear]"
 user-invocable: true
 allowed-tools:

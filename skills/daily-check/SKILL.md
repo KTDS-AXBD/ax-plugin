@@ -1,10 +1,6 @@
 ---
 name: daily-check
-description: |
-  Daily Task 시작 전 환경 점검 + 자동 보정.
-  Node/pnpm 버전, 의존성, Git 동기화, Worktree/Branch 위생, 빌드 상태, D1 마이그레이션 drift, Hook 상태, SPEC.md 수치 정합성을 점검한다.
-  문제 발견 시 자동 보정을 시도하고, 보정 불가 항목은 보고한다.
-  Use when: 환경 점검, daily check, 시작 전 점검, health check, worktree 점검, branch 점검
+description: "Daily Task 시작 전 환경 점검 + 자동 보정. Node/pnpm 버전, 의존성, Git 동기화, Worktree/Branch 위생, 빌드 상태, D1 마이그레이션 drift, Hook 상태, SPEC.md 수치 정합성을 점검한다. 문제 발견 시 자동 보정을 시도하고, 보정 불가 항목은 보고한다. Use when: 환경 점검, daily check, 시작 전 점검, health check"
 argument-hint: "[full|quick]"
 user-invocable: true
 allowed-tools:

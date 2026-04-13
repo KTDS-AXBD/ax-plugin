@@ -1,9 +1,6 @@
 ---
 name: sprint-watch
-description: |
-  Sprint WT 완료까지 자동 모니터링 + 완료 시 merge pipeline 실행.
-  GitHub Gist에 상태를 주기적으로 업데이트하여 모바일에서 확인 가능.
-  Use when: sprint watch, 모니터링, monitor sprint, 원격 모니터링, gist
+description: "Sprint WT 완료까지 자동 모니터링 + 완료 시 merge pipeline 실행. GitHub Gist에 상태를 주기적으로 업데이트하여 모바일에서 확인 가능. Use when: sprint watch, 모니터링, monitor sprint, gist"
 argument-hint: "[start|stop|status|once]"
 user-invocable: true
 allowed-tools:

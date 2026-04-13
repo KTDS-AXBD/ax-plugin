@@ -1,11 +1,6 @@
 ---
 name: e2e-audit
-description: |
-  E2E 테스트 시나리오 점검 + 실행 + 커버리지 감사.
-  Playwright 기반 E2E를 실행하고, 라우트 커버리지 매트릭스를 생성하고,
-  실패 원인을 분류하고, 품질 이슈(flaky, weak assertion, API-only)를 감지한다.
-  서브커맨드: run, audit, fix, coverage, report.
-  Use when: E2E 점검, E2E 감사, E2E 실행, E2E 커버리지, playwright, e2e test
+description: "E2E 테스트 시나리오 점검 + 실행 + 커버리지 감사. Playwright 기반 E2E를 실행하고, 라우트 커버리지 매트릭스를 생성하고, 실패 원인을 분류하고, 품질 이슈(flaky, weak assertion, API-only)를 감지한다. 서브커맨드: run, audit, fix, coverage, report. Use when: E2E 점검, E2E 감사, playwright, e2e test"
 argument-hint: "[run|audit|fix|coverage|report]"
 user-invocable: true
 allowed-tools:

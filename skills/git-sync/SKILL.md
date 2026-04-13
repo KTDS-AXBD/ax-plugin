@@ -1,10 +1,6 @@
 ---
 name: git-sync
-description: |
-  Git을 통한 멀티 환경(Windows/WSL/Mac) 간 프로젝트 동기화.
-  로컬과 GitHub 리모트 상태를 비교하고 push/pull로 동기화한다.
-  config 서브커맨드: ~/.claude/ 설정 파일(commands, skills, standards, rules) 동기화.
-  Use when user mentions: git sync, 환경 동기화, push, pull, 코드 동기화, 환경 전환, config sync, 설정 동기화
+description: "Git을 통한 멀티 환경(Windows/WSL/Mac) 간 프로젝트 동기화. 로컬과 GitHub 리모트 상태를 비교하고 push/pull로 동기화한다. config 서브커맨드: ~/.claude/ 설정 파일(commands, skills, standards, rules) 동기화. Use when: git sync, 환경 동기화, push, pull, config sync"
 argument-hint: "[push|pull|status|stash|config]"
 user-invocable: true
 allowed-tools:

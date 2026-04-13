@@ -1,13 +1,6 @@
 ---
 name: req-interview
-description: |
-  요구사항 기획 단계에서 인터뷰 → PRD 작성 → 외부 AI 다중 검토 → 반복 개선 → 착수 판단까지의 전체 워크플로우를 자동화하는 스킬.
-  Use when: 기획, 요구사항, PRD, 인터뷰, 뭘 만들지 정리, requirements interview
-  다음 상황에서 반드시 사용한다:
-  - "기획", "요구사항", "PRD", "인터뷰로 시작", "뭘 만들지 정리" 등의 표현이 등장할 때
-  - 새로운 프로젝트/기능/서비스 시작 전 요구사항을 정리하고 싶을 때
-  - 아이디어를 구체화하여 검토 가능한 문서로 만들고 싶을 때
-  - 기존 PRD를 다시 검토 사이클에 넣고 싶을 때
+description: "요구사항 기획 단계에서 인터뷰 → PRD 작성 → 외부 AI 다중 검토 → 반복 개선 → 착수 판단까지의 전체 워크플로우를 자동화하는 스킬. Use when: 기획, 요구사항, PRD, 인터뷰, 뭘 만들지 정리, requirements interview"
 argument-hint: "[프로젝트명 또는 기능 설명]"
 user-invocable: true
 ---

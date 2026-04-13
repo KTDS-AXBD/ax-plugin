@@ -1,9 +1,6 @@
 ---
 name: infra-selfcheck
-description: |
-  ax plugin 자율점검 — plugin skills, project skills, standards, hooks, 참조 정합성을 자동 검증한다.
-  플러그인 인프라 변경 후 실행하여 구조적 결함을 사전 감지.
-  Use when: 플러그인 점검, selfcheck, 정합성, plugin health, 인프라 검증
+description: "ax plugin 자율점검 — plugin skills, project skills, standards, hooks, 참조 정합성을 자동 검증한다. 플러그인 인프라 변경 후 실행하여 구조적 결함을 사전 감지. Use when: 플러그인 점검, selfcheck, 정합성, plugin health"
 argument-hint: ""
 user-invocable: true
 allowed-tools:

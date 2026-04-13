@@ -1,10 +1,6 @@
 ---
 name: todo
-description: |
-  작업 계획 오케스트레이터 — 할 일 수집 → 요구사항 등록 → F-item 등록 → Sprint 그룹화 → Pipeline 구성.
-  Marker.io 피드백/SPEC.md 미완료/GitHub Issues를 종합하여 Sprint Pipeline으로 organize한다.
-  Use when: todo, 할 일, 오늘 작업, 작업 목록, 현황, 뭐 해야 해, what to do, task list,
-  피드백 점검, 작업 계획, 스프린트 계획, organize, 정리, 작업 정리
+description: "작업 계획 오케스트레이터 — 할 일 수집 → 요구사항 등록 → F-item 등록 → Sprint 그룹화 → Pipeline 구성. Marker.io 피드백/SPEC.md 미완료/GitHub Issues를 종합하여 Sprint Pipeline으로 organize한다. Use when: todo, 할 일, 오늘 작업, 작업 목록, 뭐 해야 해"
 argument-hint: "[status|plan|feedback|all]"
 user-invocable: true
 allowed-tools:

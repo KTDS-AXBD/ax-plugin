@@ -1,9 +1,6 @@
 ---
 name: sprint
-description: |
-  Sprint worktree Full Auto 오케스트레이션 — start 한 번으로 WT 생성→autopilot→모니터링→merge까지.
-  worktree를 Windows Terminal 독립 탭으로 열고, SPEC.md F-items와 연동.
-  Use when: sprint, 스프린트, worktree, 워크트리, 병렬 작업, sprint start, sprint merge
+description: "Sprint worktree Full Auto 오케스트레이션 — start 한 번으로 WT 생성→autopilot→모니터링→merge까지. worktree를 Windows Terminal 독립 탭으로 열고, SPEC.md F-items와 연동. Use when: sprint, 스프린트, worktree, 워크트리, sprint start"
 argument-hint: "<start|merge|pr|review|done|list|monitor|clean> [N] [--manual|--team|--single]"
 user-invocable: true
 allowed-tools:

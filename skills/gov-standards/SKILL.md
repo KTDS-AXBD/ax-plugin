@@ -1,9 +1,6 @@
 ---
 name: gov-standards
-description: |
-  거버넌스 표준 관리 — 표준 목록 조회, 갭 분석, 적용 상태 확인.
-  15개 표준(GOV-001~015)의 현재 적용 상태를 점검하고 관리한다.
-  Use when: 거버넌스, 표준 점검, GOV, standards, governance, 갭 분석
+description: "거버넌스 표준 관리 — 표준 목록 조회, 갭 분석, 적용 상태 확인. 15개 표준(GOV-001~015)의 현재 적용 상태를 점검하고 관리한다. Use when: 거버넌스, 표준 점검, GOV, standards, 갭 분석"
 argument-hint: "[list|check|apply]"
 user-invocable: true
 allowed-tools:
