@@ -3,6 +3,14 @@ name: req-interview
 description: "요구사항 기획 단계에서 인터뷰 → PRD 작성 → 외부 AI 다중 검토 → 반복 개선 → 착수 판단까지의 전체 워크플로우를 자동화하는 스킬. Use when: 기획, 요구사항, PRD, 인터뷰, 뭘 만들지 정리, requirements interview"
 argument-hint: "[프로젝트명 또는 기능 설명]"
 user-invocable: true
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Glob
+  - Grep
+  - AskUserQuestion
 ---
 
 # Requirements Interview Skill
