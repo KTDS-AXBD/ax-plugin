@@ -131,13 +131,14 @@ fi
    - 3회 iterate 후에도 < 90%면 `STATUS=FAILED`, `ERROR_STEP=analyze` 기록 후 중단
 5. `.sprint-context`에 `CHECKPOINT=analyze` 기록
 
-### Step 5b: E2E Coverage Audit (선택적)
+### Step 5b: E2E Verify — 자동 생성 + 실행 + Composite Score (F526)
 
-> Gap 분석(Step 5)은 Design↔Implementation만 측정한다. E2E/통합 테스트 커버리지는
-> 별도 차원이라 Gap 98%여도 E2E 0건일 수 있다 (S260 Sprint 261 F509 교훈).
-> packages/web에 Playwright 설정이 있을 때만 자동 실행한다.
+> **F526 통합**: Gap 분석(Step 5) 결과에 E2E 실행 결과를 합산하여 Composite Score를 산출한다.
+> Design 문서 §4+§5에서 E2E 시나리오를 자동 추출하고, Playwright로 실행하여
+> `Gap×0.6 + E2E×0.4` 가중 평균으로 최종 품질 점수를 결정한다.
 
 ```bash
+# Playwright 설정 탐지
 PW_DIR=""
 for dir in "packages/web" "apps/app-web"; do
   if [ -f "$dir/playwright.config.ts" ] || [ -f "$dir/playwright.config.js" ]; then
@@ -147,14 +148,31 @@ for dir in "packages/web" "apps/app-web"; do
 done
 ```
 
-1. **Playwright 설정이 있으면**: `/ax:e2e-audit coverage` 실행
-   - Sprint에서 추가/수정한 라우트가 E2E spec으로 커버되는지 확인
-   - 커버리지 갭이 있으면 WARN 출력 + `.sprint-context`에 `E2E_GAPS=N` 기록
-   - 자동 수정은 하지 않음 (E2E 작성은 도메인 판단 필요)
-2. **Playwright 설정이 없으면**: SKIP ("E2E 미설정 — 건너뜀")
-3. `.sprint-context`에 `CHECKPOINT=e2e-audit` 기록
+**Playwright 설정이 있으면** — `foundry-x e2e-verify` 실행:
+```bash
+# Step 5에서 얻은 MATCH_RATE 사용
+MATCH_RATE=$(grep "^MATCH_RATE=" .sprint-context 2>/dev/null | cut -d= -f2 || echo "95")
+VERIFY_OUT=$(npx foundry-x e2e-verify "${SPRINT_NUM}" --gap-rate "${MATCH_RATE}" --json 2>&1)
+COMPOSITE=$(echo "$VERIFY_OUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['compositeScore']['compositeRate'])" 2>/dev/null || echo "")
+E2E_STATUS=$(echo "$VERIFY_OUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['compositeScore']['status'])" 2>/dev/null || echo "")
 
-**판정 기준**: E2E 갭이 있어도 autopilot을 중단하지 않는다. Report(Step 6)에 갭 목록을 포함하여 사후 작업으로 남긴다.
+# .sprint-context 갱신
+if [ -n "$COMPOSITE" ]; then
+  sed -i "s/^MATCH_RATE=.*/MATCH_RATE=${COMPOSITE}/" .sprint-context 2>/dev/null || \
+    echo "MATCH_RATE=${COMPOSITE}" >> .sprint-context
+fi
+echo "E2E_STATUS=${E2E_STATUS}" >> .sprint-context
+```
+
+판정 규칙:
+- `E2E_STATUS=PASS` → Step 5 PASS로 간주, Step 6으로 진행
+- `E2E_STATUS=FAIL` → pdca-iterator 재시도 없이 Report에 갭 목록 기록 후 Step 6 진행
+  (E2E 실패는 구현 회귀가 아닌 E2E 품질 개선 과제로 남김)
+- `foundry-x` 미설치 / Playwright 없음 → SKIP ("E2E-verify 불가 — Gap Score만 사용")
+
+**Playwright 설정이 없으면**: SKIP
+
+`.sprint-context`에 `CHECKPOINT=e2e-audit` 기록
 
 ### Step 6: Report
 
