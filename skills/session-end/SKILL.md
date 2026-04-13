@@ -760,6 +760,20 @@ SKILL_CHANGED=$(git diff --cached --name-only -- '.claude/skills/' '.claude/rule
 - drift: 0 / N건 감지 (source↔cache)
 ```
 
+### Phase 5c: Usage Log (자동, 항상 실행)
+
+이 세션에서 호출된 `/ax:*` 스킬 목록을 usage.jsonl에 기록한다.
+PostToolUse(Skill) hook은 CC가 Skill matcher를 지원하지 않으므로, session-end에서 직접 기록.
+
+**실행 절차:**
+1. 이 세션의 대화 내용에서 `/ax:` 스킬 호출을 수집 (이전 턴들에서 `Skill` 도구 호출 목록)
+2. 수집한 스킬 이름을 usage-log.sh에 전달:
+   ```bash
+   bash ~/.claude/plugins/marketplaces/ax-marketplace/hooks/scripts/usage-log.sh \
+     session-start daily-check infra-selfcheck help
+   ```
+3. `sf-usage report`로 확인 가능
+
 ### Phase 6: Git Push + 배포 점검 (필수)
 
 ```bash
