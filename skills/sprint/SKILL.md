@@ -121,6 +121,39 @@ fi
 ```
 > ⚠️ **Phase 2d도 반드시 실행한다** — 생략하면 signal 감지/merge 자동화가 동작하지 않는다 (S271 교훈).
 
+**Phase 2e: Signal CREATED 즉시 생성** — Phase 2 성공/실패와 무관하게 **항상 실행**한다.
+> 2026-04-16 S298 교훈: bashrc sprint() 성공 경로여도 `ccw-auto`를 거치지 않고 Master에서
+> 직접 `ccs + /ax:sprint-autopilot`를 주입하는 경우 signal이 만들어지지 않는다. 신형 bashrc
+> (2026-04-16~)는 sprint() 본체가 signal을 만들지만, 구 bashrc일 수 있으므로 skill에서도
+> 방어적으로 보장한다. 기존 signal 있으면 skip하여 안전.
+```bash
+SIGNAL_DIR="/tmp/sprint-signals"
+mkdir -p "$SIGNAL_DIR"
+SIGNAL_FILE="${SIGNAL_DIR}/${PROJECT}-${N}.signal"
+if [ ! -f "$SIGNAL_FILE" ]; then
+  GH_REPO=$(git remote get-url origin 2>/dev/null | grep -oP '(?<=github.com[:/])[^.]+(?=\.git)?' | head -1 || true)
+  PROJ_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+  cat > "$SIGNAL_FILE" <<SIG
+STATUS=CREATED
+SPRINT_NUM=${N}
+PROJECT=${PROJECT}
+F_ITEMS=${F_ITEMS}
+BRANCH=sprint/${N}
+PR_NUM=
+GITHUB_REPO=${GH_REPO}
+PROJECT_ROOT=${PROJ_ROOT}
+CHECKPOINT=
+ERROR_STEP=
+ERROR_MSG=
+MATCH_RATE=
+TEST_RESULT=
+MONITOR_TASK_ID=
+TIMESTAMP=$(date -Iseconds)
+SIG
+  echo "📡 Signal CREATED: ${SIGNAL_FILE}"
+fi
+```
+
 **Phase 3: Autopilot 주입** (`--manual` 미지정 시 자동):
 ```bash
 TMUX_SESSION="sprint-${PROJECT}-${N}"
