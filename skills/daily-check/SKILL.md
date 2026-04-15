@@ -44,15 +44,18 @@ echo "Turbo: $(npx turbo --version 2>/dev/null || echo 'not found')"
 
 ```bash
 echo "=== tmux Server Binary ==="
-CLIENT_BIN=$(which tmux 2>/dev/null)
+CLIENT_BIN_RAW=$(which tmux 2>/dev/null)
+# readlink -f로 심링크 해석된 실경로 추출 (server는 /proc/PID/exe에서 이미 실경로 반환)
+CLIENT_BIN=$(readlink -f "$CLIENT_BIN_RAW" 2>/dev/null || echo "$CLIENT_BIN_RAW")
 CLIENT_VER=$(tmux -V 2>/dev/null || echo "not found")
-echo "Client: $CLIENT_BIN → $CLIENT_VER"
+echo "Client: $CLIENT_BIN_RAW → $CLIENT_BIN → $CLIENT_VER"
 
-# 서버 프로세스의 실제 바이너리 확인
+# 서버 프로세스의 실제 바이너리 확인 (readlink /proc/PID/exe = 심링크 해석된 실경로)
 SERVER_PID=$(pgrep -a tmux 2>/dev/null | grep -E 'new-session|server' | head -1 | awk '{print $1}')
 if [ -n "$SERVER_PID" ]; then
   SERVER_BIN=$(readlink /proc/$SERVER_PID/exe 2>/dev/null || echo "unknown")
   echo "Server PID: $SERVER_PID → $SERVER_BIN"
+  # 실경로끼리 비교 (심링크 false positive 방지 — S299 교훈)
   if [ "$CLIENT_BIN" != "$SERVER_BIN" ] && [ "$SERVER_BIN" != "unknown" ]; then
     echo "MISMATCH: client=$CLIENT_BIN server=$SERVER_BIN"
   else
