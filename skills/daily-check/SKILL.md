@@ -407,6 +407,53 @@ echo "total drift: $TOTAL_DRIFT"
 | Plugin Drift | OK/WARN | ax=N bkit=M total=K |
 ```
 
+### 6e. 모델 버전 Drift 점검 (full 모드만)
+
+> `packages/shared/src/model-defaults.ts`가 SDK 호출의 **SSOT**.
+> CLI 경로(`--model sonnet` alias)는 자동 현행화되지만, SDK 경로는 구체 버전을 지정해야 하므로 SSOT drift를 점검한다.
+> 면제: migration SQL(이력 보존), archive/, test fixture(의도적 고정), 이력 설명 문서.
+
+**실행 절차:**
+
+```bash
+echo "=== Model Version Drift ==="
+
+# 1. SSOT 추출 (packages/shared/src/model-defaults.ts)
+SSOT_SONNET=$(grep 'MODEL_SONNET' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-sonnet-[0-9]+-[0-9]+' | head -1)
+SSOT_HAIKU=$(grep 'MODEL_HAIKU' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-haiku-[0-9]+-[0-9]+' | head -1)
+echo "SSOT: sonnet=${SSOT_SONNET:-?} haiku=${SSOT_HAIKU:-?}"
+
+# 2. 활성 코드의 claude-sonnet/haiku 리터럴 전수 검색
+#    - 제외: migrations, archive, test/e2e fixtures, historical docs
+DRIFT_SONNET=$(grep -rnE 'claude-sonnet-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
+  | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/)' \
+  | grep -vE "${SSOT_SONNET:-__never__}" | wc -l)
+DRIFT_HAIKU=$(grep -rnE 'claude-haiku-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
+  | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/)' \
+  | grep -vE "${SSOT_HAIKU:-__never__}" | wc -l)
+
+TOTAL=$((DRIFT_SONNET + DRIFT_HAIKU))
+echo "drift: sonnet=$DRIFT_SONNET haiku=$DRIFT_HAIKU total=$TOTAL"
+
+# 3. drift 발견 시 상위 N건 목록 출력
+if [ "$TOTAL" -gt 0 ]; then
+  echo "--- drift locations (top 10) ---"
+  grep -rnE 'claude-(sonnet|haiku)-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
+    | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/)' \
+    | grep -vE "${SSOT_SONNET:-__never__}|${SSOT_HAIKU:-__never__}" \
+    | head -10
+fi
+```
+
+**자동 보정:**
+- drift > 0: **WARN**만 출력 + drift 파일 목록 + "model-defaults.ts SSOT(`MODEL_SONNET`/`MODEL_HAIKU`)로 교체 권장" 안내. 자동 치환은 하지 않음(의도적 고정 구분 필요)
+- drift = 0: **PASS**
+
+**결과 테이블 행:**
+```
+| 모델 버전 Drift | OK/WARN | SSOT sonnet=X-Y haiku=X-Y, drift N건 |
+```
+
 ### 7. 디스크/캐시 정리 (full 모드만)
 
 ```bash
@@ -448,6 +495,7 @@ echo "Playwright report: $PW_REPORT, results: $PW_RESULTS"
 | 랜딩 fallback | OK/WARN | N drift(s) found, M auto-fixed |
 | 랜딩 footer | OK/WARN | N drift(s) found, M auto-fixed |
 | Plugin Drift | OK/WARN | ax=N bkit=M total=K |
+| 모델 버전 Drift | OK/WARN | SSOT sonnet/haiku, drift N건 |
 | Disk/Cache | INFO | turbo XMB, playwright YMB |
 
 ### 자동 보정 수행
