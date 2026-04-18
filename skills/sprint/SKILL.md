@@ -165,7 +165,7 @@ sleep 10
 tmux send-keys -t "$TMUX_SESSION" "/ax:sprint-autopilot" Enter
 ```
 **주의**: `claude -p` 또는 `echo | claude` 파이프 모드는 TUI가 보이지 않으므로 금지.
-**모델**: WT는 `--model sonnet` (Sonnet 4.6), Master는 기본 Opus. `--model opus`로 오버라이드 가능.
+**모델**: WT는 `--model sonnet` alias(Claude CLI가 현행 Sonnet 최신 버전 자동 선택), Master는 기본 Opus alias. `--model opus`로 오버라이드 가능. 특정 버전 번호는 하드코딩하지 말 것 — Anthropic release 시 alias가 자동 추종.
 
 **Phase 4: Signal 초기화**:
 ```bash
@@ -692,4 +692,4 @@ Manual (--manual):
 - **구 모니터 스크립트 DEPRECATED (C42, 2026-04-12)**: `sprint-merge-monitor.sh`, `sprint-status-monitor.sh`는 `task-daemon.sh`로 통합됨. `~/scripts/` 경로로 호출하지 말 것
 - task-daemon은 D1/deploy를 자동 실행하므로 **WSL에서 wrangler 금지** 설정과 충돌 가능 — 프로젝트에 wrangler.toml이 없으면 D1/deploy 단계는 자동 스킵됨
 - `ccs` vs `ccw`: ccs는 skip-perms 모드. autopilot에서 signal을 직접 생성하므로 ccw의 post-session 불필요
-- **WT 모델**: 기본 Sonnet (`ccs --model sonnet`). Master=Opus, WT=Sonnet으로 역할 분리. 복잡한 Sprint는 `--model opus`로 오버라이드 가능
+- **WT 모델**: `ccs --model sonnet` alias(CLI가 현행 최신 버전 자동 매핑). Master=Opus, WT=Sonnet 역할 분리. 복잡한 Sprint는 `--model opus` 오버라이드. 특정 minor 버전(예: 4.6/4.7) 하드코딩 금지 — alias로 자동 현행화
