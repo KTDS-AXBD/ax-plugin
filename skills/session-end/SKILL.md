@@ -207,7 +207,8 @@ ROUTES=$(ls packages/api/src/routes/ 2>/dev/null | wc -l)
 SERVICES=$(ls packages/api/src/services/ 2>/dev/null | wc -l)
 SCHEMAS=$(ls packages/api/src/schemas/ 2>/dev/null | wc -l)
 D1_LATEST=$(ls packages/api/src/db/migrations/*.sql 2>/dev/null | sort | tail -1 | xargs basename | sed 's/_.*//')
-SPRINT=$(grep 'system-version' SPEC.md 2>/dev/null | grep -oP 'Sprint \d+' | grep -oP '\d+')
+# Sprint: SPEC §5 테이블에서 최고 번호 (SSOT). frontmatter system-version은 stale될 수 있으므로 사용하지 않음
+SPRINT=$(grep -oP 'Sprint \K\d+' SPEC.md | sort -n | tail -1)
 TODAY=$(date +%Y-%m-%d)
 ```
 
