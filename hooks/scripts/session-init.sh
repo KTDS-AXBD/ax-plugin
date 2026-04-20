@@ -63,10 +63,22 @@ if git rev-parse --is-inside-work-tree &>/dev/null && [[ -f "package.json" ]]; t
     fi
   fi
 
+  # SPEC.md 레거시 인라인 마커 검출 — check-version.sh와 동일 필터
+  # (단독 닫힘 괄호 + 백틱 파일명 화이트리스트, 외부 산출물 식별자 제외)
   if [[ -f "SPEC.md" ]]; then
-    LEGACY=$(grep -nP '\(v\d+\.\d+' SPEC.md | head -5)
+    LEGACY=$(grep -nP '\(v\d+(\.\d+)+\)' SPEC.md \
+      | grep -vP '^\d+:###?\s' \
+      | grep -vP 'Sprint\s+\d+' \
+      | grep -vP '^\d+:-\s*\[' \
+      | grep -vP '`[^`]+\.(md|docx|json|yaml|yml|html|sh|ts|js|py|sql|toml)`\s*\(v\d+(\.\d+)+\)' \
+      | head -5)
     if [[ -n "$LEGACY" ]]; then
-      COUNT=$(grep -cP '\(v\d+\.\d+' SPEC.md)
+      COUNT=$(grep -P '\(v\d+(\.\d+)+\)' SPEC.md \
+        | grep -vP '^###?\s' \
+        | grep -vP 'Sprint\s+\d+' \
+        | grep -vP '^-\s*\[' \
+        | grep -vP '`[^`]+\.(md|docx|json|yaml|yml|html|sh|ts|js|py|sql|toml)`\s*\(v\d+(\.\d+)+\)' \
+        | wc -l)
       echo "VER-WARN: SPEC.md에 레거시 버전 마커 ${COUNT}개 발견. SemVer로 전환 필요."
     fi
   fi

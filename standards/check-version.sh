@@ -35,12 +35,30 @@ if [[ -n "$LATEST_TAG" ]]; then
 fi
 
 # 3. SPEC.md 레거시 버전 마커 검출
-# Sprint 이력 제목 (### Sprint N (vX.Y) 등)은 정상적인 기록이므로 제외
-# 본문 인라인 마커 (기능명 (v1.4) 등)만 감지
+#
+# 검출 대상: 기능명 (v1.4) 등 본문 인라인 마커 (단독 닫힌 괄호 형식)
+# 화이트리스트 (검출 제외):
+#   - Heading: ### Sprint N (v1.4) 등
+#   - Sprint 이력 행
+#   - 체크리스트 항목 (- [ ] / - [x])
+#   - 외부 산출물 식별자: `path/file.md` (v1.4) 형태 (백틱 + 확장자 직후)
+#   - 설명 동반 식별자: (v1.0 PlumbBridge ...) 처럼 괄호 안에 추가 텍스트가 있는 경우
+#
+# 핵심 패턴: `\(v\d+\.\d+\)` (괄호 안에 버전만, 닫는 괄호 포함)
 if [[ -f "SPEC.md" ]]; then
-  LEGACY=$(grep -nP '\(v\d+\.\d+' SPEC.md | grep -vP '^\d+:###?\s' | grep -vP 'Sprint\s+\d+' | grep -vP '^\d+:-\s*\[' | head -5)
+  LEGACY=$(grep -nP '\(v\d+(\.\d+)+\)' SPEC.md \
+    | grep -vP '^\d+:###?\s' \
+    | grep -vP 'Sprint\s+\d+' \
+    | grep -vP '^\d+:-\s*\[' \
+    | grep -vP '`[^`]+\.(md|docx|json|yaml|yml|html|sh|ts|js|py|sql|toml)`\s*\(v\d+(\.\d+)+\)' \
+    | head -5)
   if [[ -n "$LEGACY" ]]; then
-    COUNT=$(grep -P '\(v\d+\.\d+' SPEC.md | grep -vP '^###?\s' | grep -vP 'Sprint\s+\d+' | grep -vcP '^-\s*\[')
+    COUNT=$(grep -P '\(v\d+(\.\d+)+\)' SPEC.md \
+      | grep -vP '^###?\s' \
+      | grep -vP 'Sprint\s+\d+' \
+      | grep -vP '^-\s*\[' \
+      | grep -vP '`[^`]+\.(md|docx|json|yaml|yml|html|sh|ts|js|py|sql|toml)`\s*\(v\d+(\.\d+)+\)' \
+      | wc -l)
     echo "VER-WARN: SPEC.md에 인라인 버전 마커 ${COUNT}개 발견. SemVer로 전환 필요."
     echo "  예시: $(echo "$LEGACY" | head -1)"
   fi
