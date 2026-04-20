@@ -94,7 +94,7 @@ if [[ -n "$PKG_VERSION" && -d "docs" ]]; then
           fi
         fi
       fi
-    done < <(find docs/ -name '*.md' -type f -not -path 'docs/archive/*' 2>/dev/null)
+    done < <(find docs/ -name '*.md' -type f -not -path '*/archive/*' 2>/dev/null)
 
     if [[ ${#STALE_DOCS[@]} -gt 0 ]]; then
       echo "VER-WARN: system-version이 현재 버전보다 2+ minor 뒤처진 문서 ${#STALE_DOCS[@]}건:"
