@@ -454,6 +454,57 @@ fi
 | 모델 버전 Drift | OK/WARN | SSOT sonnet=X-Y haiku=X-Y, drift N건 |
 ```
 
+### 6f. Sonnet alias 신규 버전 감지 (full 모드만)
+
+> Step 6e(SSOT drift)가 **정적 파일 비교**라면, 이 단계는 **CLI alias를 실측**하여
+> Anthropic 신규 릴리스 등장을 감지한다. `claude --model sonnet` alias는 CLI 업데이트
+> 시점에 자동으로 최신 버전으로 재매핑되지만, SSOT는 수동 갱신 대상이라 업그레이드
+> 타이밍 알림이 필요하다. `claude --print --output-format json`의 `modelUsage` key가
+> **실제 사용된 model ID** 를 반환한다는 점을 이용.
+
+**실행 절차:**
+
+```bash
+echo "=== Sonnet alias resolution ==="
+
+# 1. SSOT 추출 (Step 6e 재사용)
+SSOT_SONNET=$(grep 'MODEL_SONNET' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-sonnet-[0-9]+-[0-9]+' | head -1)
+
+# 2. CLI로 alias resolution 실측 (ping 최소 호출, timeout 45s)
+RESOLVED=$(timeout 45 claude --model sonnet --print --output-format json "ping" 2>/dev/null \
+  | jq -r '.modelUsage | keys[0] // empty' 2>/dev/null)
+
+# 3. 비교 + 업그레이드 안내
+if [ -z "$RESOLVED" ]; then
+  echo "⚠️ alias resolution 실패 — claude --print 응답 없음(네트워크/인증/timeout 확인)"
+  STATUS="SKIP"
+elif [ "$RESOLVED" = "$SSOT_SONNET" ]; then
+  echo "✅ CLI sonnet = SSOT ($SSOT_SONNET)"
+  STATUS="OK"
+elif [ -n "$SSOT_SONNET" ]; then
+  echo "🔔 Sonnet 신규 버전 감지 — 3단계 업그레이드 필요"
+  echo "    SSOT  : $SSOT_SONNET"
+  echo "    CLI   : $RESOLVED"
+  echo "    (1) claude --version 확인 후 필요 시 CLI 업데이트"
+  echo "    (2) packages/shared/src/model-defaults.ts: MODEL_SONNET = \"$RESOLVED\""
+  echo "    (3) pnpm --filter @foundry-x/shared typecheck → PR + auto-merge"
+  STATUS="UPGRADE"
+fi
+```
+
+**자동 보정:**
+- `UPGRADE` 상태: **WARN + 3단계 안내**. 자동 코드 수정 금지(릴리스 노트 확인 후 사용자 판단)
+- `SKIP` 상태: **WARN** (network/auth transient일 수 있으므로 다음 실행에서 재시도)
+- `OK` 상태: **PASS**
+
+**비용 주의:**
+- `claude --print` 1회 호출 ≈ $0.15~$0.30 (cache creation 포함). daily-check는 on-demand라 허용. **매 세션 자동 실행되지 않도록** full 모드 한정.
+
+**결과 테이블 행:**
+```
+| Sonnet Alias | OK/WARN | CLI=X-Y SSOT=X-Y |
+```
+
 ### 7. 디스크/캐시 정리 (full 모드만)
 
 ```bash
@@ -479,6 +530,7 @@ echo "Playwright report: $PW_REPORT, results: $PW_RESULTS"
 | 항목 | 결과 | 상세 |
 |------|------|------|
 | Runtime | OK/WARN | node X, pnpm Y |
+| Sonnet Alias | OK/WARN/SKIP | CLI=X-Y SSOT=X-Y (Step 6f) |
 | tmux Server | OK/WARN | client=X server=Y (match/mismatch) |
 | Git Sync | OK/WARN/ERR | ahead=N behind=M dirty=K |
 | Worktree | OK/WARN | 활성 N개, 고아 M개, dirty K개 |
