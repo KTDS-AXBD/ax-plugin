@@ -120,6 +120,25 @@ if [ -f "$SIGNAL_FILE" ]; then
 fi
 ```
 
+#### Step 4e: Scope Drift Check (C81)
+
+> Gap Analysis 직전에 SPEC F-item 범위 vs 실제 변경 파일 대조.
+> **Non-blocking** — 경고만 출력, autopilot 진행을 중단하지 않음.
+> Sprint 311 F560 scope drift 재발 방지 (aligner가 Match Rate를 왜곡하는 경우 조기 감지).
+
+```bash
+if [ -f "scripts/preflight/check-scope-drift.sh" ]; then
+  DRIFT_EXIT=0
+  bash scripts/preflight/check-scope-drift.sh "$SPRINT_NUM" "origin/master...HEAD" || DRIFT_EXIT=$?
+  if [ "$DRIFT_EXIT" -ne 0 ]; then
+    echo ""
+    echo "🔶 SCOPE DRIFT 감지 — Gap Analysis 결과를 주의 깊게 확인하세요"
+    echo "   SPEC F-item 범위 외 변경 파일 존재. Match Rate 왜곡 가능성."
+    echo "   권장: Gap Analysis 완료 후 범위 외 변경 의도 재확인"
+  fi
+fi
+```
+
 ### Step 5: Analyze
 
 1. **Tier 1/2**: `/pdca analyze sprint-{N}` 실행 (gap-detector agent)
@@ -173,6 +192,44 @@ echo "E2E_STATUS=${E2E_STATUS}" >> .sprint-context
 **Playwright 설정이 없으면**: SKIP
 
 `.sprint-context`에 `CHECKPOINT=e2e-audit` 기록
+
+### Step 5c: Codex Cross-Review (Dual-AI Verification, F554)
+
+> **F554 배선**: Codex CLI가 독립 AI로 PR diff를 검토. Claude Gap Score와 상호 보완.
+> E2E Verify(5b) 직후, Report(6) 직전에 실행.
+
+```bash
+SPRINT_NUM=$(grep "^SPRINT_NUM=" .sprint-context 2>/dev/null | cut -d= -f2 || echo "")
+REVIEW_JSON=".claude/reviews/sprint-${SPRINT_NUM}/codex-review.json"
+
+# Codex 리뷰 실행
+bash scripts/autopilot/codex-review.sh --sprint "$SPRINT_NUM"
+
+# verdict 판정
+VERDICT=$(python3 -c "import json; print(json.load(open('$REVIEW_JSON')).get('verdict','unknown'))" 2>/dev/null || echo "unknown")
+DEGRADED=$(python3 -c "import json; print(json.load(open('$REVIEW_JSON')).get('degraded',True))" 2>/dev/null || echo "True")
+
+echo "Codex verdict=$VERDICT degraded=$DEGRADED"
+```
+
+**판정 규칙**:
+- `verdict == BLOCK` → autopilot 중단 + Signal `STATUS=BLOCKED` + `ERROR_STEP=codex-review`
+- `verdict == WARN`  → 경고 로그 기록 + Step 6(Report) 진행
+- `verdict == PASS`  → Step 6으로 진행
+- `degraded=true`   → `PASS-degraded` 처리 (관측 로그만, 4주 관측 기간)
+
+**BLOCK 시 Signal 갱신**:
+```bash
+if [ "$VERDICT" = "BLOCK" ]; then
+  SIGNAL_FILE="/tmp/sprint-signals/${PROJECT}-${SPRINT_NUM}.signal"
+  sed -i "s/^STATUS=.*/STATUS=BLOCKED/" "$SIGNAL_FILE" 2>/dev/null || true
+  sed -i "s/^ERROR_STEP=.*/ERROR_STEP=codex-review/" "$SIGNAL_FILE" 2>/dev/null || true
+  echo "❌ Codex BLOCK verdict — autopilot 중단"
+  exit 1
+fi
+```
+
+`.sprint-context`에 `CHECKPOINT=codex-review` 기록
 
 ### Step 6: Report
 
@@ -267,7 +324,8 @@ plan             → Step 3 (design)
 design           → Step 4 (implement)
 implement        → Step 5 (analyze)
 analyze          → Step 5b (e2e-audit)
-e2e-audit        → Step 6 (report)
+e2e-audit        → Step 5c (codex-review)
+codex-review     → Step 6 (report)
 report           → Step 7 (session-end)
 ```
 
@@ -288,6 +346,7 @@ report           → Step 7 (session-end)
 | 4 | Implement | — | Design §5 Worker 2명 병렬 |
 | 5 | Analyze | — | /pdca analyze sprint-63 |
 | 5b | E2E Audit | — | /ax:e2e-audit coverage |
+| 5c | Codex Cross-Review | — | codex-review.sh --sprint 63 |
 | 6 | Report | — | /pdca report sprint-63 |
 | 7 | Session End | — | /ax-session-end |
 ```
