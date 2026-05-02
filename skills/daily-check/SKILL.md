@@ -411,7 +411,7 @@ echo "total drift: $TOTAL_DRIFT"
 
 > `packages/shared/src/model-defaults.ts`가 SDK 호출의 **SSOT**.
 > CLI 경로(`--model sonnet` alias)는 자동 현행화되지만, SDK 경로는 구체 버전을 지정해야 하므로 SSOT drift를 점검한다.
-> 면제: migration SQL(이력 보존), archive/, test fixture(의도적 고정), 이력 설명 문서.
+> 면제: migration SQL(이력 보존), archive/, test fixture(의도적 고정), 이력 설명 문서, **dist/**(빌드 산출물 — 6e-2에서 별도 처리).
 
 **실행 절차:**
 
@@ -423,23 +423,23 @@ SSOT_SONNET=$(grep 'MODEL_SONNET' packages/shared/src/model-defaults.ts 2>/dev/n
 SSOT_HAIKU=$(grep 'MODEL_HAIKU' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-haiku-[0-9]+-[0-9]+' | head -1)
 echo "SSOT: sonnet=${SSOT_SONNET:-?} haiku=${SSOT_HAIKU:-?}"
 
-# 2. 활성 코드의 claude-sonnet/haiku 리터럴 전수 검색
-#    - 제외: migrations, archive, test/e2e fixtures, historical docs
+# 2. 활성 SOURCE 코드의 claude-sonnet/haiku 리터럴 전수 검색
+#    - 제외: migrations, archive, test/e2e fixtures, historical docs, dist/(6e-2에서 처리)
 DRIFT_SONNET=$(grep -rnE 'claude-sonnet-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
-  | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/)' \
+  | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/|/dist/)' \
   | grep -vE "${SSOT_SONNET:-__never__}" | wc -l)
 DRIFT_HAIKU=$(grep -rnE 'claude-haiku-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
-  | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/)' \
+  | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/|/dist/)' \
   | grep -vE "${SSOT_HAIKU:-__never__}" | wc -l)
 
 TOTAL=$((DRIFT_SONNET + DRIFT_HAIKU))
-echo "drift: sonnet=$DRIFT_SONNET haiku=$DRIFT_HAIKU total=$TOTAL"
+echo "source drift: sonnet=$DRIFT_SONNET haiku=$DRIFT_HAIKU total=$TOTAL"
 
 # 3. drift 발견 시 상위 N건 목록 출력
 if [ "$TOTAL" -gt 0 ]; then
-  echo "--- drift locations (top 10) ---"
+  echo "--- source drift locations (top 10) ---"
   grep -rnE 'claude-(sonnet|haiku)-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
-    | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/)' \
+    | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/|/dist/)' \
     | grep -vE "${SSOT_SONNET:-__never__}|${SSOT_HAIKU:-__never__}" \
     | head -10
 fi
@@ -451,7 +451,82 @@ fi
 
 **결과 테이블 행:**
 ```
-| 모델 버전 Drift | OK/WARN | SSOT sonnet=X-Y haiku=X-Y, drift N건 |
+| 모델 버전 Drift (source) | OK/WARN | SSOT sonnet=X-Y haiku=X-Y, drift N건 |
+```
+
+### 6e-2. dist Orphan Drift 점검 + 자동 정리 (full 모드만)
+
+> **배경**: tsc는 src에서 삭제된 파일의 dist 산출물을 자동 제거하지 않는다. F555/F538/F540/F570류
+> 리팩토링·도메인 이관 후 dist에 stale orphan이 남아 false positive drift를 유발한다.
+> (S314 교훈, `feedback_dist_orphan_after_src_delete.md` 참조)
+
+**판정 로직:**
+- dist에서 모델 ID drift 발견 시 → **대응 src 파일 존재 여부 확인**
+  - src 존재 + drift = **진짜 source-to-dist mismatch** (dist만 stale, src는 SSOT 사용 중) → 빌드 권장
+  - **src 미존재 + dist 존재 = orphan 확정** → 자동 정리 (.gitignore 확인 후)
+
+**실행 절차:**
+
+```bash
+echo "=== dist Orphan Drift ==="
+SSOT_SONNET=$(grep 'MODEL_SONNET' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-sonnet-[0-9]+-[0-9]+' | head -1)
+SSOT_HAIKU=$(grep 'MODEL_HAIKU' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-haiku-[0-9]+-[0-9]+' | head -1)
+
+# 1. dist/ 내 drift 파일 목록 (.js + .d.ts)
+DIST_DRIFT_FILES=$(grep -rlE 'claude-(sonnet|haiku)-[0-9]+-[0-9]+' packages/*/dist 2>/dev/null \
+  | grep -vE "${SSOT_SONNET:-__never__}|${SSOT_HAIKU:-__never__}" 2>/dev/null \
+  | sort -u)
+DIST_COUNT=$(echo "$DIST_DRIFT_FILES" | grep -c . || echo 0)
+echo "dist drift count: $DIST_COUNT"
+
+ORPHAN_LIST=""
+SRC_MISSING_LIST=""
+for f in $DIST_DRIFT_FILES; do
+  # dist/foo/bar.js 또는 dist/foo/bar.d.ts → src/foo/bar.ts 매핑
+  src_path=$(echo "$f" | sed -E 's|/dist/|/src/|; s|\.(js|d\.ts)$|.ts|; s|\.js\.map$|.ts|; s|\.d\.ts\.map$|.ts|')
+  if [ ! -f "$src_path" ]; then
+    ORPHAN_LIST="$ORPHAN_LIST $f"
+    SRC_MISSING_LIST="$SRC_MISSING_LIST $src_path"
+  fi
+done
+
+ORPHAN_COUNT=$(echo "$ORPHAN_LIST" | wc -w)
+echo "orphan (src 미존재): $ORPHAN_COUNT 파일"
+
+# 2. orphan이면 .gitignore 확인 후 자동 삭제
+DELETED=0
+if [ "$ORPHAN_COUNT" -gt 0 ]; then
+  # .gitignore 확인 (첫 파일만 — 모든 dist는 동일 .gitignore 적용 가정)
+  FIRST=$(echo "$ORPHAN_LIST" | awk '{print $1}')
+  if git check-ignore "$FIRST" >/dev/null 2>&1; then
+    echo "✅ .gitignore 적용 확인 — orphan 12 파일 자동 삭제"
+    for f in $ORPHAN_LIST; do
+      # 같은 base의 .js, .d.ts, .js.map, .d.ts.map 4종 모두 삭제
+      base=$(echo "$f" | sed -E 's|\.(js|d\.ts)(\.map)?$||')
+      rm -f "${base}.js" "${base}.d.ts" "${base}.js.map" "${base}.d.ts.map" 2>/dev/null
+      DELETED=$((DELETED + 1))
+    done
+    echo "삭제 완료: $DELETED orphan source (×4 산출물)"
+  else
+    echo "⚠️ .gitignore 미적용 — 수동 확인 필요"
+  fi
+fi
+
+# 3. src 존재하는데 dist drift = 빌드 stale (자동 보정 안 함)
+SRC_EXISTS_DRIFT=$((DIST_COUNT - ORPHAN_COUNT))
+if [ "$SRC_EXISTS_DRIFT" -gt 0 ]; then
+  echo "⚠️ src 존재 + dist drift $SRC_EXISTS_DRIFT 건 — 'pnpm --filter <pkg> build' 권장 (자동 보정 안 함)"
+fi
+```
+
+**자동 보정:**
+- **src 미존재 + dist 존재 (orphan)**: `.gitignore` 적용 확인 후 자동 삭제
+- **src 존재 + dist drift (stale build)**: WARN + `pnpm --filter <pkg> build` 안내. 자동 빌드는 안 함(빌드 시간 + 부수효과 우려)
+- **drift = 0**: PASS
+
+**결과 테이블 행:**
+```
+| dist Orphan | OK/WARN | drift N건, orphan M건 자동삭제, stale K건 |
 ```
 
 ### 6f. Sonnet alias 신규 버전 감지 (full 모드만)
@@ -547,7 +622,9 @@ echo "Playwright report: $PW_REPORT, results: $PW_RESULTS"
 | 랜딩 fallback | OK/WARN | N drift(s) found, M auto-fixed |
 | 랜딩 footer | OK/WARN | N drift(s) found, M auto-fixed |
 | Plugin Drift | OK/WARN | ax=N bkit=M total=K |
-| 모델 버전 Drift | OK/WARN | SSOT sonnet/haiku, drift N건 |
+| 모델 버전 Drift (source) | OK/WARN | SSOT sonnet/haiku, drift N건 |
+| dist Orphan | OK/FIXED/WARN | drift N건, orphan M건 자동삭제, stale K건 |
+| Sonnet Alias | OK/WARN/SKIP | CLI=X-Y SSOT=X-Y |
 | Disk/Cache | INFO | turbo XMB, playwright YMB |
 
 ### 자동 보정 수행
