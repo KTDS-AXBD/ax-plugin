@@ -212,6 +212,10 @@ REVIEW_JSON=".claude/reviews/sprint-${SPRINT_NUM}/codex-review.json"
 # Codex 리뷰 실행
 bash scripts/autopilot/codex-review.sh --sprint "$SPRINT_NUM"
 
+# F553 GAP-1 해소 — D1 dual_ai_reviews 테이블 저장 (Foundry-X 전용, 다른 프로젝트는 자동 skip)
+SAVE_DUAL="scripts/autopilot/save-dual-review.sh"
+[ -x "$SAVE_DUAL" ] && bash "$SAVE_DUAL" --sprint "$SPRINT_NUM" || true
+
 # verdict 판정
 VERDICT=$(python3 -c "import json; print(json.load(open('$REVIEW_JSON')).get('verdict','unknown'))" 2>/dev/null || echo "unknown")
 DEGRADED=$(python3 -c "import json; print(json.load(open('$REVIEW_JSON')).get('degraded',True))" 2>/dev/null || echo "True")
