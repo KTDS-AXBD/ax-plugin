@@ -149,6 +149,13 @@ fi
    - **Tier 3**: Gap 목록 기반 직접 수정 후 재분석
    - 3회 iterate 후에도 < 90%면 `STATUS=FAILED`, `ERROR_STEP=analyze` 기록 후 중단
 5. `.sprint-context`에 `CHECKPOINT=analyze` 기록
+6. **PDCA 산출물 명명 표준화 (C101 a)** — analyze 단계에서 생성된 `sprint-{N}.analysis.md` 등 deviation 파일을 GOV-001 표준명(`FX-ANLS-{NNN}_*`)으로 자동 변환:
+   ```bash
+   RENAME_SCRIPT="$(git rev-parse --show-toplevel)/scripts/sprint/rename-pdca-output.sh"
+   [ -x "$RENAME_SCRIPT" ] && bash "$RENAME_SCRIPT" --quiet || true
+   ```
+   - 스크립트 미존재 시 silent skip (프로젝트별 적용 여부 다름)
+   - INDEX.md 행 자동 등재 + 헤더 갱신 포함
 
 ### Step 5b: E2E Verify — 자동 생성 + 실행 + Composite Score (F526)
 
@@ -236,6 +243,11 @@ fi
 1. **Tier 1/2**: `/pdca report sprint-{N}` 실행 (report-generator agent)
 2. **Tier 3**: 간단 요약 작성
 3. `.sprint-context`에 `CHECKPOINT=report` 기록
+4. **PDCA 산출물 명명 표준화 (C101 a)** — report 단계에서 생성된 `sprint-{N}.report.md` 등 deviation 파일을 GOV-001 표준명(`FX-RPRT-{NNN}_*`)으로 자동 변환:
+   ```bash
+   RENAME_SCRIPT="$(git rev-parse --show-toplevel)/scripts/sprint/rename-pdca-output.sh"
+   [ -x "$RENAME_SCRIPT" ] && bash "$RENAME_SCRIPT" --quiet || true
+   ```
 
 ### Step 7: Session End + Signal 생성
 
