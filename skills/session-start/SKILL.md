@@ -109,7 +109,59 @@ fi
 > **TaskList 활용 옵션**: 모든 활성 task를 조회하여 description이 "Sprint * signal"인 Monitor를 찾아서 signal 파일이 없거나 완료된 Sprint에 해당하면 TaskStop.
 > 단, TaskList 호출 비용이 있으므로 signal 파일 기반 스캔을 우선한다.
 
+### 5d. 신규 Sprint Monitor 자동 시작 (Master 세션만)
+
+> **목적**: bashrc `sprint()` 함수 직접 호출 또는 다른 pane의 Sprint 시동 결과로 생성된 signal 중 **Monitor가 미부착된 활성 Sprint**를 감지하여 Master 세션에서 Monitor 도구를 자동 시작한다.
+> sprint-ops Rule #1 ("반드시 Monitor 도구를 시작한다") 위반을 4회+ 누적(S256/266/268/263)한 결과 도입 (S263 2026-05-04).
+> worktree 세션에서는 실행하지 않는다 (`.git`이 파일인 경우 건너뜀).
+> Monitor가 이미 부착된 Sprint(MONITOR_TASK_ID 있음) 또는 종료된 Sprint(STATUS=DONE/MERGED/FAILED)는 건너뛴다 (5c에서 정리됨).
+
+**감지 로직** (bash 스캔):
+
+```bash
+SIGNAL_DIR="/tmp/sprint-signals"
+ORPHAN_ACTIVE=()
+if [ -d "$SIGNAL_DIR" ]; then
+  for SIGNAL in "$SIGNAL_DIR"/*.signal; do
+    [ -f "$SIGNAL" ] || continue
+    SIG_STATUS=$(grep "^STATUS=" "$SIGNAL" | cut -d= -f2)
+    SIG_NUM=$(grep "^SPRINT_NUM=" "$SIGNAL" | cut -d= -f2)
+    SIG_PROJECT=$(grep "^PROJECT=" "$SIGNAL" | cut -d= -f2)
+    MONITOR_TASK_ID=$(grep "^MONITOR_TASK_ID=" "$SIGNAL" | cut -d= -f2)
+
+    # 활성(CREATED/IN_PROGRESS) + Monitor 미부착 + 현 프로젝트 일치
+    if [ "$SIG_STATUS" = "CREATED" ] || [ "$SIG_STATUS" = "IN_PROGRESS" ]; then
+      if [ -z "$MONITOR_TASK_ID" ]; then
+        CURRENT_PROJECT=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)
+        if [ "$SIG_PROJECT" = "$CURRENT_PROJECT" ]; then
+          ORPHAN_ACTIVE+=("$SIG_NUM")
+          echo "🔔 Monitor 미부착 활성 Sprint 감지: $SIG_PROJECT-$SIG_NUM (status=$SIG_STATUS)"
+        fi
+      fi
+    fi
+  done
+fi
+```
+
+**Monitor 도구 자동 시작** (감지된 각 Sprint마다, sprint skill Phase 5b와 동일 패턴):
+
+> ⚠️ **신규 Sprint마다 1개씩** Monitor 도구 호출. ToolSearch로 Monitor 스키마 로드 → `Monitor(persistent: true, command: ...)` 호출. 반환 task_id를 signal에 기록.
+
+```
+# 각 ORPHAN_ACTIVE 항목에 대해:
+Monitor(
+  description: "Sprint $N signal/pane/notification 변화",
+  persistent: true,
+  timeout_ms: 3600000,
+  command: <signal STATUS/CHECKPOINT/PR_NUM/MATCH_RATE 변화 + ndjson sprint_$N 이벤트 + tmux pane 종료 감지>
+)
+# 반환된 task_id를 signal에 기록 (sprint skill Phase 5b 동일):
+sed -i "s/^MONITOR_TASK_ID=.*/MONITOR_TASK_ID=${TASK_ID}/" "$SIGNAL"
+```
+
+> **Skip 조건**: 사용자가 명시적으로 "Monitor 안 켜도 됨" 또는 quick 모드 옵션 사용 시. 또는 `~/.claude/.no-auto-monitor` flag 파일 존재 시.
+
 ### 6. 세션 시작 안내
 
-Master: 프로젝트 상태 + 오늘 작업 + 관련 파일 + 활성 WT 목록.
+Master: 프로젝트 상태 + 오늘 작업 + 관련 파일 + 활성 WT 목록 + (5d 발견 시) **신규 Monitor 자동 시작 보고**.
 Worktree: Sprint 컨텍스트 + 브랜치/경로 + 작업 범위 + push 주의사항.
