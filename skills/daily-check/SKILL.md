@@ -472,18 +472,31 @@ echo "=== dist Orphan Drift ==="
 SSOT_SONNET=$(grep 'MODEL_SONNET' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-sonnet-[0-9]+-[0-9]+' | head -1)
 SSOT_HAIKU=$(grep 'MODEL_HAIKU' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-haiku-[0-9]+-[0-9]+' | head -1)
 
-# 1. dist/ 내 drift 파일 목록 (.js + .d.ts)
-DIST_DRIFT_FILES=$(grep -rlE 'claude-(sonnet|haiku)-[0-9]+-[0-9]+' packages/*/dist 2>/dev/null \
-  | grep -vE "${SSOT_SONNET:-__never__}|${SSOT_HAIKU:-__never__}" 2>/dev/null \
-  | sort -u)
+# 1. dist/ 내 drift 파일 목록 — **content-based filter** (S342 fix)
+#    ⚠️ 이전 버그(S342 발견): `grep -rlE ... | grep -vE "$SSOT"`는 filename 기반 filter라
+#    SSOT 문자열이 파일명에 안 들어가서 모든 model ID 매치 파일이 false positive로 잡힘.
+#    Fix: 각 파일에서 model ID를 추출 후 SSOT가 아닌 ID가 1개 이상 있을 때만 drift로 판정.
+DIST_DRIFT_FILES=$(
+  grep -rlE 'claude-(sonnet|haiku)-[0-9]+-[0-9]+' packages/*/dist 2>/dev/null |
+    while IFS= read -r f; do
+      if grep -oE 'claude-(sonnet|haiku)-[0-9]+-[0-9]+' "$f" 2>/dev/null |
+         grep -vxE "${SSOT_SONNET:-__never__}|${SSOT_HAIKU:-__never__}" |
+         grep -q .; then
+        echo "$f"
+      fi
+    done | sort -u
+)
 DIST_COUNT=$(echo "$DIST_DRIFT_FILES" | grep -c . || echo 0)
 echo "dist drift count: $DIST_COUNT"
 
 ORPHAN_LIST=""
 SRC_MISSING_LIST=""
 for f in $DIST_DRIFT_FILES; do
-  # dist/foo/bar.js 또는 dist/foo/bar.d.ts → src/foo/bar.ts 매핑
-  src_path=$(echo "$f" | sed -E 's|/dist/|/src/|; s|\.(js|d\.ts)$|.ts|; s|\.js\.map$|.ts|; s|\.d\.ts\.map$|.ts|')
+  # dist/foo/bar.js 또는 dist/foo/bar.d.ts → src/foo/bar.ts 매핑 (bash parameter expansion, S342 sed 버그 회피)
+  base="${f%.map}"
+  base="${base%.d.ts}"
+  base="${base%.js}"
+  src_path="${base//\/dist\///src/}.ts"
   if [ ! -f "$src_path" ]; then
     ORPHAN_LIST="$ORPHAN_LIST $f"
     SRC_MISSING_LIST="$SRC_MISSING_LIST $src_path"
@@ -499,10 +512,12 @@ if [ "$ORPHAN_COUNT" -gt 0 ]; then
   # .gitignore 확인 (첫 파일만 — 모든 dist는 동일 .gitignore 적용 가정)
   FIRST=$(echo "$ORPHAN_LIST" | awk '{print $1}')
   if git check-ignore "$FIRST" >/dev/null 2>&1; then
-    echo "✅ .gitignore 적용 확인 — orphan 12 파일 자동 삭제"
+    echo "✅ .gitignore 적용 확인 — orphan $ORPHAN_COUNT 파일 자동 삭제"
     for f in $ORPHAN_LIST; do
-      # 같은 base의 .js, .d.ts, .js.map, .d.ts.map 4종 모두 삭제
-      base=$(echo "$f" | sed -E 's|\.(js|d\.ts)(\.map)?$||')
+      # 같은 base의 .js, .d.ts, .js.map, .d.ts.map 4종 모두 삭제 (bash parameter expansion)
+      base="${f%.map}"
+      base="${base%.d.ts}"
+      base="${base%.js}"
       rm -f "${base}.js" "${base}.d.ts" "${base}.js.map" "${base}.d.ts.map" 2>/dev/null
       DELETED=$((DELETED + 1))
     done
