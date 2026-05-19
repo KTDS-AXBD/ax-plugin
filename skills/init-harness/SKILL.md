@@ -1,3 +1,17 @@
+---
+name: init-harness
+description: "ax-harness-kit Tier 1 — Foundry-X에서 정착한 BD 라이프사이클 자동화 인프라를 신규 프로젝트에 안전하게 이식. 3단계(preflight → install → verify)로 Tier 1 설치 완료, monorepo 골격 + .nvmrc + Claude hooks + drift check + Cloudflare 배포 옵션. Use when: init-harness, ax-harness-kit, Tier 1, harness 초기 설치, 신규 프로젝트, scaffold, 프로젝트 초기화, BD 라이프사이클 이식"
+argument-hint: "<project-name> <github-org/repo> \"<description>\" [--cf-account <id>] [--worker-subdomain <name>]"
+user-invocable: true
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+---
+
 # ax-harness-kit Tier 1 — init-harness
 
 Foundry-X에서 정착한 BD 라이프사이클 자동화 인프라를 신규 프로젝트에 안전하게 이식한다.
