@@ -161,6 +161,45 @@ sed -i "s/^MONITOR_TASK_ID=.*/MONITOR_TASK_ID=${TASK_ID}/" "$SIGNAL"
 
 > **Skip 조건**: 사용자가 명시적으로 "Monitor 안 켜도 됨" 또는 quick 모드 옵션 사용 시. 또는 `~/.claude/.no-auto-monitor` flag 파일 존재 시.
 
+### 5e. MERGED Sprint 잔재 fallback 정리 (Master 세션만)
+
+> **목적**: L1(task-daemon.sh `phase_sprint_signals` 10단계 grace cleanup)이 누락한 MERGED Sprint 잔재를 fallback 정리한다. 정상 경로는 L1이 60s grace 후 자동 정리하므로 본 phase는 누락 사례만 처리.
+> worktree 세션에서는 실행하지 않는다 (`.git`이 파일인 경우 건너뜀).
+> 5c (Stale Monitor task 종료)와 분리 — 5c는 Monitor task만 stop, 5e는 signal/flag/log/tmux session 잔재 정리.
+
+**정리 대상**:
+1. `/tmp/sprint-signals/<PROJECT>-<N>.signal` — STATUS=MERGED 인 signal 파일
+2. `/tmp/sprint-signals/rename-fired-<N>.flag` — tmux 탭 rename trigger flag
+3. `/tmp/sprint-signals/tmux-rename-<N>.log` + `tmux-rename-<N>-created.log` — rename 로그
+4. tmux 세션 `sprint-<PROJECT>-<N>` — Sprint WT 탭
+
+**감지 + 정리 로직**:
+
+```bash
+SIGNAL_DIR="/tmp/sprint-signals"
+if [ -d "$SIGNAL_DIR" ]; then
+  for SIGNAL in "$SIGNAL_DIR"/*.signal; do
+    [ -f "$SIGNAL" ] || continue
+    SIG_STATUS=$(grep '^STATUS=' "$SIGNAL" | cut -d= -f2)
+    [ "$SIG_STATUS" = "MERGED" ] || continue
+
+    SIG_NUM=$(grep '^SPRINT_NUM=' "$SIGNAL" | cut -d= -f2)
+    SIG_PROJECT=$(grep '^PROJECT=' "$SIGNAL" | cut -d= -f2)
+    CURRENT_PROJECT=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)
+    [ "$SIG_PROJECT" = "$CURRENT_PROJECT" ] || continue
+
+    echo "🧹 MERGED 잔재 정리: $SIG_PROJECT-$SIG_NUM"
+    rm -f "$SIGNAL" \
+          "$SIGNAL_DIR/rename-fired-${SIG_NUM}.flag" \
+          "$SIGNAL_DIR/tmux-rename-${SIG_NUM}.log" \
+          "$SIGNAL_DIR/tmux-rename-${SIG_NUM}-created.log"
+    tmux kill-session -t "sprint-${SIG_PROJECT}-${SIG_NUM}" 2>/dev/null || true
+  done
+fi
+```
+
+> **정책 근거**: 사용자 명시 결정(S312, 2026-05-20) — "작업 완료된 sprint wt는 자동 정리". L1(task-daemon.sh)과 L2(session-start) 2-layer 구조. L1 누락 시 1세션 지연으로 자연 회복. 정착 사례: S311 Sprint 382/383 잔재 cleanup 후 L1+L2 2-layer 도입.
+
 ### 6. 세션 시작 안내
 
 Master: 프로젝트 상태 + 오늘 작업 + 관련 파일 + 활성 WT 목록 + (5d 발견 시) **신규 Monitor 자동 시작 보고**.
