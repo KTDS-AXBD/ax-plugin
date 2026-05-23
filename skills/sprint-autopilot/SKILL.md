@@ -329,6 +329,19 @@ SIGNAL
 ```
 > Signal이 DONE으로 작성되면, Master의 `sprint-merge-monitor.sh`가 자동으로 review→merge→deploy→cleanup을 수행한다.
 
+### Step 7b: Velocity 메트릭 기록 (필수 — velocity stale 영구 차단)
+
+> ⚠️ **이 단계는 절대 생략하지 않는다.** velocity JSON 누락이 다수 sprint 연속 누적되어(Foundry-X S374~S375, 8 sprint 연속 stale) 본 step을 명문화했다. autopilot이 호출 자체를 누락하던 것이 root cause이며, `record-sprint.sh`는 `.sprint-context` 우선 → signal fallback 순으로 메트릭을 수집하므로 한 줄 호출이면 충분하다.
+> 스크립트가 없는 프로젝트(Foundry-X 외)는 자동 skip된다 (Step 5c codex-review와 동일 패턴).
+
+```bash
+# Signal 생성 직후 실행 — SPRINT_NUM은 인자로 명시 (signal fallback 보장)
+VELOCITY_SCRIPT="$(git rev-parse --show-toplevel)/scripts/velocity/record-sprint.sh"
+[ -f "$VELOCITY_SCRIPT" ] && bash "$VELOCITY_SCRIPT" "${SPRINT_NUM}" || true
+```
+
+생성 확인: `docs/metrics/velocity/sprint-${SPRINT_NUM}.json` 파일 존재 + `match_rate`/`f_items` 필드가 채워졌는지 점검. 빈 값이면 `.sprint-context`/signal의 F_ITEMS·MATCH_RATE 누락을 의심한다.
+
 ## --resume 모드
 
 `.sprint-context`의 `CHECKPOINT` 값을 읽어 해당 단계 이후부터 재개한다.
