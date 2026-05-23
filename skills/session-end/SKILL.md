@@ -847,10 +847,16 @@ fi
 PROD_API=$(grep -oP 'https?://[^\s)]+workers\.dev' ~/.claude/projects/*/memory/MEMORY.md 2>/dev/null | head -1 || true)
 PROD_WEB=$(grep -oP 'https?://[^\s)]+\.(best|pages\.dev)' ~/.claude/projects/*/memory/MEMORY.md 2>/dev/null | head -1 || true)
 
-# API 헬스체크
+# API 헬스체크 — 루트 경로(/) 응답 확인
+# `/health` 고정은 해당 엔드포인트 미존재 프로젝트(다수)에서 404 오탐 발생 → 루트로 변경 (S378 fix)
+# 판정: 200(공개 루트) / 401·403(JWT·RBAC 인증 보호 = 워커 정상 가동)이면 정상.
+#       000(미도달) / 404(루트 부재) / 5xx(서버 오류)만 경고.
 if [ -n "$PROD_API" ]; then
-  API_CODE=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 10 "$PROD_API/health" 2>/dev/null || echo "000")
-  [ "$API_CODE" = "200" ] && API_HEALTH="✅" || API_HEALTH="⚠️ HTTP $API_CODE"
+  API_CODE=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 10 "$PROD_API/" 2>/dev/null || echo "000")
+  case "$API_CODE" in
+    200|401|403) API_HEALTH="✅ HTTP $API_CODE" ;;
+    *)           API_HEALTH="⚠️ HTTP $API_CODE" ;;
+  esac
 fi
 
 # Web 접근 확인
