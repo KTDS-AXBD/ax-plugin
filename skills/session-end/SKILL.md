@@ -661,6 +661,18 @@ fi
 ```
 > **근거 (F708, S385)**: graduation sprint(F700 sprint-432, F707 sprint-439)가 Step 7b 미경유로 velocity 누락 → 수동 backfill 2회 발생. record-sprint.sh는 견고하나 "호출 주체 부재"가 root cause. 이전 "안내만 출력 (false trigger 방지)" 방식을 idempotent reconciliation(✅ 행만 대상)으로 대체하여 근본 해소.
 
+**SPEC ✅ flip 누락 자동 reconciliation (F709, Master 세션 전용)**:
+```bash
+# Master 세션: F709 — autopilot/Master sprint이 PR merge 후에도 SPEC §5 status를 📋/🔧로
+# 남기는 비대칭 누락(F704·F705·F706 3연속 등 5회+)을 보정. "PR merged"를 ground truth로 삼아
+# status 미완인데 PR이 MERGED면 ✅ 보정. PR 없으면 skip(진단/docs-only/미완 보존) → 오flip 위험 0.
+if [ "$IS_WORKTREE" != "true" ] && [ -x scripts/spec/flip-merged.sh ]; then
+  bash scripts/spec/flip-merged.sh --apply 15 2>&1 | tail -1 || true
+  # flipped>0 이면 SPEC.md status 변경분을 Phase 5 문서 커밋에 포함
+fi
+```
+> **근거 (F709, S385)**: autopilot이 PR merge + velocity(Step 7b)는 하지만 SPEC status flip만 비대칭 누락(F704·F705·F706 단일 세션 3연속). F708 velocity backfill 동계열 reconciliation — "PR merged" ground truth로 status 미완(📋/🔧)인데 merged면 ✅ 자동 보정. status 셀만 surgical sed(라인 지정 + 이모지 매칭)로 파이프 함정 회피, PR 없으면 skip.
+
 **Phase 진행률 확인 (F506)**:
 ```bash
 if [ -x scripts/epic/phase-progress.sh ]; then
