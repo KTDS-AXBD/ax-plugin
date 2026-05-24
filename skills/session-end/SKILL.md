@@ -648,18 +648,18 @@ if [ -x scripts/board/board-sync-spec.sh ]; then
 fi
 ```
 
-**Velocity 수동 기록 (F505, Master 세션 전용)**:
+**Velocity 누락 자동 backfill (F505 + F708, Master 세션 전용)**:
 ```bash
-# Sprint WT 세션에서는 sprint-merge-monitor가 자동 호출하므로 skip
-# Master 세션에서 수동 Sprint 추적이 필요한 경우에만 실행
-if [ "$IS_WORKTREE" != "true" ] && [ -x scripts/velocity/record-sprint.sh ]; then
-  # 이번 세션이 F-item을 완료했고 .sprint-context가 없으면 수동 Sprint로 간주
-  if [ -n "${SESSION_F_ITEMS:-}" ] && [ ! -f .sprint-context ]; then
-    echo "ℹ️  Sprint 외 F-item 완료 감지 — velocity 기록 수동 트리거 가능"
-    # 자동 실행은 하지 않음 (false trigger 방지), 안내만 출력
-  fi
+# Sprint WT 세션에서는 sprint-merge-monitor가 자동 호출하므로 skip.
+# Master 세션: F708 — graduation/Master-주도 sprint(F700·F707 선례)는 sprint-autopilot
+# Step 7b를 미경유해 velocity/sprint-N.json이 누락된다. backfill-missing.sh가 SPEC §5의
+# ✅ sprint 중 velocity JSON 없는 것만 생성(idempotent) → false-trigger 위험 0이라 자동 호출 안전.
+if [ "$IS_WORKTREE" != "true" ] && [ -x scripts/velocity/backfill-missing.sh ]; then
+  bash scripts/velocity/backfill-missing.sh 12 --session session-end 2>&1 | tail -1 || true
+  # created>0 이면 생성된 docs/metrics/velocity/sprint-N.json 을 Phase 5 문서 커밋에 포함
 fi
 ```
+> **근거 (F708, S385)**: graduation sprint(F700 sprint-432, F707 sprint-439)가 Step 7b 미경유로 velocity 누락 → 수동 backfill 2회 발생. record-sprint.sh는 견고하나 "호출 주체 부재"가 root cause. 이전 "안내만 출력 (false trigger 방지)" 방식을 idempotent reconciliation(✅ 행만 대상)으로 대체하여 근본 해소.
 
 **Phase 진행률 확인 (F506)**:
 ```bash
