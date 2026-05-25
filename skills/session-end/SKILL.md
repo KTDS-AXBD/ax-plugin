@@ -244,17 +244,16 @@ Phase 0c-2에서 갱신한 SPEC.md "마지막 실측" 수치를 README.md와 랜
 
 **실행 절차:**
 
-0. **drift 감지 (필수)** — 스크립트로 drift 유무를 먼저 확인한다:
+0. **drift 감지 + 자동 보정 (F719 `--fix`, S391~)** — 스크립트가 drift를 감지하고 **자동 보정**한다 (수동 Edit 불필요):
    ```bash
-   bash scripts/content-sync-check.sh
+   bash scripts/content-sync-check.sh --fix
    ```
-   - exit 0 → "content sync: OK" 출력 후 이 Phase 건너뜀
-   - exit 1 → drift 목록 출력 → 아래 1~4 단계 진행
+   - `content sync: OK` → drift 없었음, 이 Phase 건너뜀
+   - `content sync: FIXED N건 → OK` → drift를 4파일 5위치(hero.md stats / landing.tsx SITE_META+STATS / footer.tsx / README) SPEC §2 실측 기준 자동 보정 완료 → 아래 1~2 단계로 커밋
    - exit 2 → SPEC.md 파싱 실패, 수동 확인 필요
-1. Phase 0c-2에서 수집한 ROUTES, SERVICES, SCHEMAS, D1_LATEST, SPRINT 값을 사용
-2. 4개 파일 각각에서 현재 수치를 Grep으로 추출
-3. 불일치 항목만 Edit으로 수정
-4. 랜딩 3파일(hero.md, landing.tsx, footer.tsx) 변경은 `packages/web/` 코드이므로 **별도 PR 경로**로 커밋. README.md 변경은 Phase 5 (문서 커밋)에 포함
+   > F719(S391) 이전엔 매 sprint 5건 수동 Edit+PR 반복(S390·S391 연속)이었으나, `--fix`로 무인 보정. `--fix` 미지원 환경(구 스크립트)이면 fallback으로 수동 Grep+Edit.
+1. **`--fix`가 보정한 변경 커밋**: README.md(meta)는 Phase 5 (문서 커밋)에 포함, 랜딩 3파일(hero.md, landing.tsx, footer.tsx, `packages/web/` 코드)은 `chore/content-sync-${SPRINT}` 브랜치 → PR → `gh pr merge --auto --squash`
+2. PR auto-merge 후 `bash scripts/content-sync-check.sh`로 drift 0 재확인 (`content sync: OK`)
 
 **보정 범위:**
 - README.md: `README_SYNC_START` ~ `README_SYNC_END` 마커 블록 내부만
