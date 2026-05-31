@@ -419,12 +419,18 @@ echo "total drift: $TOTAL_DRIFT"
 echo "=== Model Version Drift ==="
 
 # 1. SSOT 추출 (packages/shared/src/model-defaults.ts)
+#    [주의] opus·sonnet·haiku 3종 전부 점검 (S395 교훈: opus 누락 시 MODEL_OPUS
+#    stale 사각지대 발생 - fx-shaping OR_MODEL_OPUS가 구버전 호출하던 갭이 미감지됨)
+SSOT_OPUS=$(grep 'MODEL_OPUS' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-opus-[0-9]+-[0-9]+' | head -1)
 SSOT_SONNET=$(grep 'MODEL_SONNET' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-sonnet-[0-9]+-[0-9]+' | head -1)
 SSOT_HAIKU=$(grep 'MODEL_HAIKU' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-haiku-[0-9]+-[0-9]+' | head -1)
-echo "SSOT: sonnet=${SSOT_SONNET:-?} haiku=${SSOT_HAIKU:-?}"
+echo "SSOT: opus=${SSOT_OPUS:-?} sonnet=${SSOT_SONNET:-?} haiku=${SSOT_HAIKU:-?}"
 
-# 2. 활성 SOURCE 코드의 claude-sonnet/haiku 리터럴 전수 검색
+# 2. 활성 SOURCE 코드의 claude-opus/sonnet/haiku 리터럴 전수 검색
 #    - 제외: migrations, archive, test/e2e fixtures, historical docs, dist/(6e-2에서 처리)
+DRIFT_OPUS=$(grep -rnE 'claude-opus-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
+  | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/|/dist/)' \
+  | grep -vE "${SSOT_OPUS:-__never__}" | wc -l)
 DRIFT_SONNET=$(grep -rnE 'claude-sonnet-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
   | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/|/dist/)' \
   | grep -vE "${SSOT_SONNET:-__never__}" | wc -l)
@@ -432,26 +438,26 @@ DRIFT_HAIKU=$(grep -rnE 'claude-haiku-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/n
   | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/|/dist/)' \
   | grep -vE "${SSOT_HAIKU:-__never__}" | wc -l)
 
-TOTAL=$((DRIFT_SONNET + DRIFT_HAIKU))
-echo "source drift: sonnet=$DRIFT_SONNET haiku=$DRIFT_HAIKU total=$TOTAL"
+TOTAL=$((DRIFT_OPUS + DRIFT_SONNET + DRIFT_HAIKU))
+echo "source drift: opus=$DRIFT_OPUS sonnet=$DRIFT_SONNET haiku=$DRIFT_HAIKU total=$TOTAL"
 
 # 3. drift 발견 시 상위 N건 목록 출력
 if [ "$TOTAL" -gt 0 ]; then
   echo "--- source drift locations (top 10) ---"
-  grep -rnE 'claude-(sonnet|haiku)-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
+  grep -rnE 'claude-(opus|sonnet|haiku)-[0-9]+-[0-9]+' packages/ scripts/ 2>/dev/null \
     | grep -vE '(migrations/|archive/|\.test\.ts|e2e/|__tests__/|/dist/)' \
-    | grep -vE "${SSOT_SONNET:-__never__}|${SSOT_HAIKU:-__never__}" \
+    | grep -vE "${SSOT_OPUS:-__never__}|${SSOT_SONNET:-__never__}|${SSOT_HAIKU:-__never__}" \
     | head -10
 fi
 ```
 
 **자동 보정:**
-- drift > 0: **WARN**만 출력 + drift 파일 목록 + "model-defaults.ts SSOT(`MODEL_SONNET`/`MODEL_HAIKU`)로 교체 권장" 안내. 자동 치환은 하지 않음(의도적 고정 구분 필요)
+- drift > 0: **WARN**만 출력 + drift 파일 목록 + "model-defaults.ts SSOT(`MODEL_OPUS`/`MODEL_SONNET`/`MODEL_HAIKU`)로 교체 권장" 안내. 자동 치환은 하지 않음(의도적 고정 구분 필요)
 - drift = 0: **PASS**
 
 **결과 테이블 행:**
 ```
-| 모델 버전 Drift (source) | OK/WARN | SSOT sonnet=X-Y haiku=X-Y, drift N건 |
+| 모델 버전 Drift (source) | OK/WARN | SSOT opus=X-Y sonnet=X-Y haiku=X-Y, drift N건 |
 ```
 
 ### 6e-2. dist Orphan Drift 점검 + 자동 정리 (full 모드만)
@@ -469,18 +475,20 @@ fi
 
 ```bash
 echo "=== dist Orphan Drift ==="
+SSOT_OPUS=$(grep 'MODEL_OPUS' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-opus-[0-9]+-[0-9]+' | head -1)
 SSOT_SONNET=$(grep 'MODEL_SONNET' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-sonnet-[0-9]+-[0-9]+' | head -1)
 SSOT_HAIKU=$(grep 'MODEL_HAIKU' packages/shared/src/model-defaults.ts 2>/dev/null | grep -oE 'claude-haiku-[0-9]+-[0-9]+' | head -1)
 
-# 1. dist/ 내 drift 파일 목록 — **content-based filter** (S342 fix)
+# 1. dist/ 내 drift 파일 목록 - **content-based filter** (S342 fix)
 #    ⚠️ 이전 버그(S342 발견): `grep -rlE ... | grep -vE "$SSOT"`는 filename 기반 filter라
 #    SSOT 문자열이 파일명에 안 들어가서 모든 model ID 매치 파일이 false positive로 잡힘.
 #    Fix: 각 파일에서 model ID를 추출 후 SSOT가 아닌 ID가 1개 이상 있을 때만 drift로 판정.
+#    (S395: opus도 포함 - 6e와 동일 사각지대 방지)
 DIST_DRIFT_FILES=$(
-  grep -rlE 'claude-(sonnet|haiku)-[0-9]+-[0-9]+' packages/*/dist 2>/dev/null |
+  grep -rlE 'claude-(opus|sonnet|haiku)-[0-9]+-[0-9]+' packages/*/dist 2>/dev/null |
     while IFS= read -r f; do
-      if grep -oE 'claude-(sonnet|haiku)-[0-9]+-[0-9]+' "$f" 2>/dev/null |
-         grep -vxE "${SSOT_SONNET:-__never__}|${SSOT_HAIKU:-__never__}" |
+      if grep -oE 'claude-(opus|sonnet|haiku)-[0-9]+-[0-9]+' "$f" 2>/dev/null |
+         grep -vxE "${SSOT_OPUS:-__never__}|${SSOT_SONNET:-__never__}|${SSOT_HAIKU:-__never__}" |
          grep -q .; then
         echo "$f"
       fi
