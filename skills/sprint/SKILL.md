@@ -141,8 +141,9 @@ fi
 
 **Phase 2b: tmux 세션 생성** (배너 + exec bash 대기):
 ```bash
-# F-item 정보 추출
-F_ITEMS=$(awk -F'|' -v s="Sprint ${N}" '$4 ~ s {match($2,/F[0-9]+/); print substr($2,RSTART,RLENGTH)}' SPEC.md 2>/dev/null | paste -sd, -)
+# F-item 정보 추출 (형식-무관: Sprint 컬럼 위치가 프로젝트마다 다름.
+# Foundry-X=col4 "Sprint N", KOAMI=col6 "SN". 모든 컬럼 순회 + 정확 매칭. KOAMI S24 fix 2026-06-01)
+F_ITEMS=$(awk -F'|' -v n="${N}" '{for(i=1;i<=NF;i++){c=$i; gsub(/^[[:space:]]+|[[:space:]]+$/,"",c); if(c=="Sprint "n || c=="S"n){match($2,/F[0-9]+/); if(RSTART) print substr($2,RSTART,RLENGTH); break}}}' SPEC.md 2>/dev/null | paste -sd, -)
 F_TITLE=$(grep "| ${F_ITEMS%%,*} |" SPEC.md 2>/dev/null | head -1 | \
   awk -F'|' '{print $3}' | sed 's/^ *//' | sed 's/ —.*//' | sed 's/ (FX-REQ.*//' | head -c 25)
 SAFE_TITLE=$(echo "$F_TITLE" | tr ':/' '__')
