@@ -100,13 +100,23 @@ TDD 풀 사이클 순서:
    - Agent 완료 후 결과 merge
 3. **Worker 매핑 없으면**: 단일 구현 (Claude가 직접 모든 파일 생성)
 
-#### Step 4d: 검증
+#### Step 4d: 검증 (⚠️ F075: turbo cache 우회 강제)
+
+> **CI lint/typecheck 누락 방지 (RFP-X F065~F074 회고: 10/10 재발).** turbo cache hit으로
+> 신규 파일 strict 에러·미사용 변수(`no-unused-vars`)·하드코딩 색(`no-hardcoded-color`)이
+> skip된다. commit 전 반드시 **`--force`로 cache 무시** 실행하고, fail이면 **commit 차단·fix 우선**.
+> (CI는 클린 빌드라 cache로 못 숨긴다 → autopilot이 통과시켜도 CI에서 fail = merge 블록)
 
 ```bash
-# 프로젝트 검증 명령 탐색 (순서대로 시도)
-turbo typecheck 2>/dev/null || pnpm typecheck 2>/dev/null || npx tsc --noEmit 2>/dev/null
+# typecheck + lint: turbo --force로 cache 무시 (신규 파일 검출 보장)
+turbo typecheck lint --force 2>&1 || pnpm -r exec tsc --noEmit 2>&1
+# fallback (turbo lint task 부재 시): eslint 직접
+# pnpm exec eslint "packages/**/src/**/*.{ts,tsx}" 2>&1
 turbo test 2>/dev/null || pnpm test 2>/dev/null
 ```
+
+> ⚠️ `turbo typecheck lint --force`가 비0 exit이면 **commit하지 말고** 에러를 fix한 뒤 재실행한다.
+> turbo 기본(--force 없이)은 cache hit으로 거짓 PASS를 만든다(turbo-cache 함정).
 
 `.sprint-context`에 `CHECKPOINT=implement` 기록
 
