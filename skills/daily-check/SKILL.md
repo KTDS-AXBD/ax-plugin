@@ -603,6 +603,67 @@ fi
 | Sonnet Alias | OK/WARN | CLI=X-Y SSOT=X-Y |
 ```
 
+### 6g. Pricing 단가 정합 점검 (full 모드만)
+
+> 6e가 모델 ID drift, 6f가 alias staleness를 점검한다면, 이 단계는 `pricing.ts` 단가가
+> SSOT 모델 티어와 맞는지 점검한다. 모델 ID SSOT는 자동 전파돼도 단가 값은 하드코딩이라 따라오지 않는다.
+> (2026-06-01 교훈, rfp-x PR #119: opus SSOT가 4.5+인데 `pricing.ts`는 Opus 4.1 시절 $15/$75로
+>  고정 → 4-7부터 모든 AgentRun cost가 3배 과대 기록되던 잠재 버그. 6e/6f 어느 것도 미검출.)
+
+**참조 단가표 (2026-06-01 Anthropic 공식 docs 기준, per MTok input/output):**
+
+| 티어 | 표준 단가 |
+|------|----------|
+| Opus 4.5 / 4.6 / 4.7 / 4.8 | $5 / $25 (1M 컨텍스트 프리미엄 없음) |
+| Opus 4.1 이하 (deprecated) | $15 / $75 |
+| Sonnet 4.x | $3 / $15 |
+| Haiku 4.5 | $1 / $5 |
+
+**실행 절차:**
+
+```bash
+echo "=== Pricing 단가 정합 ==="
+PRICING="packages/api/src/agents/pricing.ts"
+DEFAULTS="packages/shared/src/model-defaults.ts"
+STATUS="SKIP"
+if [ -f "$PRICING" ] && [ -f "$DEFAULTS" ]; then
+  SSOT_OPUS=$(grep 'MODEL_OPUS' "$DEFAULTS" | grep -oE 'claude-opus-[0-9]+-[0-9]+' | head -1)
+  # pricing.ts MODEL_OPUS 키 라인의 단가 추출
+  OPUS_IN=$(grep -A1 'MODEL_OPUS' "$PRICING" | grep -oE 'inputPerMillion: [0-9.]+' | grep -oE '[0-9.]+' | head -1)
+  OPUS_OUT=$(grep -A1 'MODEL_OPUS' "$PRICING" | grep -oE 'outputPerMillion: [0-9.]+' | grep -oE '[0-9.]+' | head -1)
+  echo "SSOT opus=$SSOT_OPUS / pricing opus=\$${OPUS_IN:-?}/\$${OPUS_OUT:-?} per MTok"
+  # Opus 4.5+ 표준 = 5/25. 15/75는 Opus 4.1 이하 deprecated tier.
+  if echo "$SSOT_OPUS" | grep -qE 'claude-opus-4-([5-9]|[1-9][0-9])$'; then
+    if [ "$OPUS_IN" = "15" ] || [ "$OPUS_OUT" = "75" ]; then
+      echo "WARN: opus SSOT가 4.5+인데 pricing이 \$15/\$75(Opus 4.1 deprecated tier) - \$5/\$25로 정정 필요"
+      STATUS="WARN"
+    elif [ "$OPUS_IN" = "5" ] && [ "$OPUS_OUT" = "25" ]; then
+      echo "OK: opus 4.5+ 표준 단가(\$5/\$25) 일치"; STATUS="OK"
+    else
+      echo "WARN: opus 단가 \$$OPUS_IN/\$$OPUS_OUT가 참조표와 불일치 - 공식 docs 재확인 권장"; STATUS="WARN"
+    fi
+  else
+    echo "INFO: opus SSOT=$SSOT_OPUS - 참조표에 없는 티어, 수동 확인"; STATUS="INFO"
+  fi
+else
+  echo "SKIP: pricing.ts 또는 model-defaults.ts 없음"
+fi
+```
+
+**자동 보정:**
+- `WARN`: **자동 변경 안 함**. 단가는 financial 상수라 잘못 바꾸면 cost 추적이 왜곡된다. 공식 docs(platform.claude.com/docs/en/about-claude/pricing) 확인 후 `pricing.ts` 수동 정정 + 영향 테스트(`pricing.test.ts` cost 기대값, `agent-runner.test.ts` cost_usd 단언 등) 동기화 안내
+- `OK` / `INFO` / `SKIP`: 보고만
+
+**참조표 staleness 주의:**
+- 위 참조 단가표는 2026-06-01 실측값. 6f가 신규 Opus alias를 감지(`UPGRADE`)하면 단가도 함께 재확인하고 본 표를 갱신한다.
+
+**비용:** 네트워크/유료 호출 없음(정적 파일 비교) - full 모드 기본 포함.
+
+**결과 테이블 행:**
+```
+| Pricing 단가 | OK/WARN/SKIP | opus $X/$Y (SSOT tier 기대값 대조) |
+```
+
 ### 7. 디스크/캐시 정리 (full 모드만)
 
 ```bash
@@ -648,6 +709,7 @@ echo "Playwright report: $PW_REPORT, results: $PW_RESULTS"
 | 모델 버전 Drift (source) | OK/WARN | SSOT sonnet/haiku, drift N건 |
 | dist Orphan | OK/FIXED/WARN | drift N건, orphan M건 자동삭제, stale K건 |
 | Sonnet Alias | OK/WARN/SKIP | CLI=X-Y SSOT=X-Y |
+| Pricing 단가 | OK/WARN/SKIP | opus $X/$Y (SSOT tier 기대값 대조, Step 6g) |
 | Disk/Cache | INFO | turbo XMB, playwright YMB |
 
 ### 자동 보정 수행
