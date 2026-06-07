@@ -609,6 +609,13 @@ fi
 > SSOT 모델 티어와 맞는지 점검한다. 모델 ID SSOT는 자동 전파돼도 단가 값은 하드코딩이라 따라오지 않는다.
 > (2026-06-01 교훈, rfp-x PR #119: opus SSOT가 4.5+인데 `pricing.ts`는 Opus 4.1 시절 $15/$75로
 >  고정 → 4-7부터 모든 AgentRun cost가 3배 과대 기록되던 잠재 버그. 6e/6f 어느 것도 미검출.)
+>
+> ⚠️ `pricing.ts` 경로는 rfp-x 구조 기준이라 **프로젝트 종속적**이다. 파일이 없으면 SKIP으로
+> 끝내지 말고 **generic fallback**(분산 하드코딩 단가 스캔)으로 대체 점검한다.
+> (2026-06-07 교훈, Foundry-X S400: pricing.ts 부재로 6g가 항상 SKIP되는 동안 bd-skill-executor가
+>  Haiku 4.5 모델에 Haiku 3.5 단가($0.8/$4)를 적용해 cost 20% 과소 기록 + ogd-orchestrator는
+>  Workers AI llama 추정치에 "Haiku-class" 오인 주석. 탐지기의 경로 전제가 깨지면
+>  "SKIP=문제없음"으로 오독되는 사각지대 사례. Foundry-X PR #999로 fix.)
 
 **참조 단가표 (2026-06-01 Anthropic 공식 docs 기준, per MTok input/output):**
 
@@ -646,13 +653,31 @@ if [ -f "$PRICING" ] && [ -f "$DEFAULTS" ]; then
     echo "INFO: opus SSOT=$SSOT_OPUS - 참조표에 없는 티어, 수동 확인"; STATUS="INFO"
   fi
 else
-  echo "SKIP: pricing.ts 또는 model-defaults.ts 없음"
+  echo "pricing.ts 없음 → generic fallback: 분산 하드코딩 단가 스캔"
+  # 단가 하드코딩 패턴: *_PER_1M / PER_MILLION / perMillion 상수, 토큰×상수 / 1_000_000 산식
+  HITS=$(grep -rnE '(_PER_1M|PER_MILLION|perMillion|1_000_000|1e6)' packages/*/src scripts 2>/dev/null \
+    | grep -vE '(/dist/|node_modules/|\.test\.|__tests__/|e2e/|migrations/|archive/)' \
+    | grep -iE 'cost|price|token')
+  HIT_COUNT=$(echo "$HITS" | grep -c . || echo 0)
+  if [ "$HIT_COUNT" -eq 0 ]; then
+    echo "OK: 단가 하드코딩 0건 (cost 계산 코드 없음)"
+    STATUS="OK"
+  else
+    echo "INFO: 단가 하드코딩 후보 $HIT_COUNT건 발견 - 각 site를 모델/티어 대조 (아래 절차)"
+    echo "$HITS" | head -10
+    STATUS="REVIEW"
+  fi
 fi
 ```
 
+**generic fallback REVIEW 절차 (hit별 수동 대조):**
+1. 해당 파일이 **실제 호출하는 모델**을 확인한다 - `MODEL_*` SSOT import인지, 외부 모델(Workers AI 등)인지. 주석이 아닌 **호출 코드**가 ground truth (Foundry-X 사례: 주석 "Haiku-class"인데 실 호출은 llama).
+2. Claude 모델이면 위 참조 단가표와 대조해 tier mismatch를 판정한다 (예: MODEL_HAIKU=4-5인데 $0.8/$4 = Haiku 3.5 단가 → drift).
+3. Claude 외 모델 추정치면 주석에 실 모델명이 명시돼 있는지 확인하고, 없으면 주석 정정을 권한다 (점검 교란 방지).
+
 **자동 보정:**
-- `WARN`: **자동 변경 안 함**. 단가는 financial 상수라 잘못 바꾸면 cost 추적이 왜곡된다. 공식 docs(platform.claude.com/docs/en/about-claude/pricing) 확인 후 `pricing.ts` 수동 정정 + 영향 테스트(`pricing.test.ts` cost 기대값, `agent-runner.test.ts` cost_usd 단언 등) 동기화 안내
-- `OK` / `INFO` / `SKIP`: 보고만
+- `WARN` / `REVIEW`: **자동 변경 안 함**. 단가는 financial 상수라 잘못 바꾸면 cost 추적이 왜곡된다. 공식 docs(platform.claude.com/docs/en/about-claude/pricing) 확인 후 수동 정정 + 영향 테스트(cost 기대값 단언 등) 동기화 안내. 정정은 PR 경유 (code 변경)
+- `OK` / `INFO` / `SKIP`: 보고만. SKIP은 `model-defaults.ts` 자체가 없는 비 LLM 프로젝트에만 해당
 
 **참조표 staleness 주의:**
 - 위 참조 단가표는 2026-06-01 실측값. 6f가 신규 Opus alias를 감지(`UPGRADE`)하면 단가도 함께 재확인하고 본 표를 갱신한다.
@@ -661,7 +686,7 @@ fi
 
 **결과 테이블 행:**
 ```
-| Pricing 단가 | OK/WARN/SKIP | opus $X/$Y (SSOT tier 기대값 대조) |
+| Pricing 단가 | OK/WARN/REVIEW/SKIP | opus $X/$Y (SSOT tier 대조) 또는 fallback scan N건 |
 ```
 
 ### 7. 디스크/캐시 정리 (full 모드만)
