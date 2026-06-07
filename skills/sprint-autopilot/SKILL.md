@@ -319,6 +319,19 @@ ${MATCH_RATE:-N/A}%
   PR_NUM=$(echo "$PR_URL" | grep -oP '\d+$' || true)
 fi
 
+# auto-merge 등록 (CI required check 통과 후 GitHub이 자동 squash merge)
+if [ -n "$PR_NUM" ]; then
+  gh pr merge "$PR_NUM" --repo "$GITHUB_REPO" --auto --squash 2>/dev/null || true
+fi
+```
+
+> ⛔ **merge는 `--auto`만 허용 - `gh pr merge`를 `--auto` 없이 직접 실행 금지.**
+> admin 계정 토큰은 branch protection을 우회하므로, 직접 merge하면 CI(`ci` required check)
+> 시작 직후의 미검증 코드가 master→deploy.yml로 프로덕션 배포된다.
+> (재발 사례: RFP-X Sprint 100/101 - ci 시작 2초 후 직접 merge 2회, S2026-06-07 보강)
+> `--auto`는 required check 통과를 GitHub이 대기하므로 Full Auto 속도 손실 없이 안전하다.
+
+```bash
 # Signal 파일 작성 (생성 또는 덮어쓰기)
 cat > "$SIGNAL_FILE" <<SIGNAL
 STATUS=DONE
