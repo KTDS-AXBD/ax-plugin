@@ -319,17 +319,22 @@ ${MATCH_RATE:-N/A}%
   PR_NUM=$(echo "$PR_URL" | grep -oP '\d+$' || true)
 fi
 
-# auto-merge 등록 (CI required check 통과 후 GitHub이 자동 squash merge)
+# CI required check 통과를 명시 대기 후 merge (admin 토큰 함정 - 아래 주의 필수)
 if [ -n "$PR_NUM" ]; then
-  gh pr merge "$PR_NUM" --repo "$GITHUB_REPO" --auto --squash 2>/dev/null || true
+  if gh pr checks "$PR_NUM" --repo "$GITHUB_REPO" --watch --interval 20 >/dev/null 2>&1; then
+    gh pr merge "$PR_NUM" --repo "$GITHUB_REPO" --squash 2>/dev/null || true
+  else
+    echo "⚠️ PR #${PR_NUM} checks FAILED - merge 보류, signal에 DONE만 기록 (Master 개입)"
+  fi
 fi
 ```
 
-> ⛔ **merge는 `--auto`만 허용 - `gh pr merge`를 `--auto` 없이 직접 실행 금지.**
-> admin 계정 토큰은 branch protection을 우회하므로, 직접 merge하면 CI(`ci` required check)
-> 시작 직후의 미검증 코드가 master→deploy.yml로 프로덕션 배포된다.
-> (재발 사례: RFP-X Sprint 100/101 - ci 시작 2초 후 직접 merge 2회, S2026-06-07 보강)
-> `--auto`는 required check 통과를 GitHub이 대기하므로 Full Auto 속도 손실 없이 안전하다.
+> ⛔ **merge 전 `gh pr checks --watch`로 CI 통과를 명시 대기한다. checks 확인 없는 merge 금지.**
+> admin 계정 토큰 + `enforce_admins=false` 환경에서는 GitHub이 PR을 항상 "mergeable"로 판정해서
+> **`gh pr merge --auto`조차 대기 없이 즉시 merge된다** (auto-merge 큐에 들어가지 않음).
+> 직접 merge든 --auto든 결과가 같으므로, CI 게이트는 `gh pr checks --watch`로만 보장된다.
+> 미준수 시 ci 시작 직후의 미검증 코드가 master→deploy.yml로 프로덕션 배포된다.
+> (재발 사례: RFP-X Sprint 100/101 ci 시작 2초 후 merge 2회 + Master 검증에서 --auto 동일 거동 실측, S2026-06-07)
 
 ```bash
 # Signal 파일 작성 (생성 또는 덮어쓰기)
