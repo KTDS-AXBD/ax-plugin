@@ -272,11 +272,17 @@ fi
 
 ```
 Monitor(
-  description: "Sprint $N signal + daemon log",
+  description: "Sprint $N signal/pane/idle 감시",
   persistent: true,
-  command: "tail -f /tmp/task-signals/daemon-${PROJECT}.log /tmp/sprint-signals/${PROJECT}-${N}.signal 2>/dev/null"
+  command: "bash ${SKILL_DIR}/scripts/sprint-monitor-watch.sh ${PROJECT} ${N}"
 )
 ```
+
+> `sprint-monitor-watch.sh`(스킬 동봉)는 signal 변화 diff·종결 감지·pane 사망 WARN에 더해
+> **idle stall 감지**(v0.9.0 회고 Try 3)를 포함한다: pane이 작업 표시 없이 idle인데 signal이
+> 10분+ 미진행이면 WARN 1회(쿨다운 20분) - rate limit 소진(5h:0%) 등 "침묵=진행중" 오인 사각의
+> 기계화 (RFP-X Sprint 131 stall 선례). WARN 수신 시 pane에 "작업 재개" nudge를 검토한다.
+> ${SKILL_DIR}는 이 스킬 디렉터리 절대경로(cache 기준)로 치환.
 
 **Monitor 시작 직후 — MONITOR_TASK_ID를 signal 파일에 기록**:
 > Monitor 도구가 반환하는 task ID를 signal 파일에 저장한다.

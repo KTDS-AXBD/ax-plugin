@@ -150,11 +150,12 @@ fi
 ```
 # 각 ORPHAN_ACTIVE 항목에 대해:
 Monitor(
-  description: "Sprint $N signal/pane/notification 변화",
+  description: "Sprint $N signal/pane/idle 감시",
   persistent: true,
   timeout_ms: 3600000,
-  command: <signal STATUS/CHECKPOINT/PR_NUM/MATCH_RATE 변화 + ndjson sprint_$N 이벤트 + tmux pane 종료 감지>
+  command: "bash <sprint 스킬 디렉터리>/scripts/sprint-monitor-watch.sh ${SIG_PROJECT} ${SIG_NUM}"
 )
+# sprint-monitor-watch.sh = signal 변화 diff + 종결/pane 감지 + idle stall WARN(10분 미진행+pane idle, rate limit 사각 검출)
 # 반환된 task_id를 signal에 기록 (sprint skill Phase 5b 동일):
 sed -i "s/^MONITOR_TASK_ID=.*/MONITOR_TASK_ID=${TASK_ID}/" "$SIGNAL"
 ```
