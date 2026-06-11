@@ -265,6 +265,18 @@ fi
 
 ### Step 7: Session End + Signal 생성
 
+**7a. SPEC F-item 마킹 - PR 동봉 (C2, 2026-06-12)**
+
+> 후속 단계에서 SPEC 마킹을 master에 직접 push하는 방식 금지 - RFP-X F146/F147/F149에서
+> 3회 연속 유실(session-end push가 Master WT 정리·타이밍 race로 손실)된 결함 경로.
+> F148(PR 동봉)만 생존한 실측이 본 표준의 근거. **반드시 sprint 브랜치 커밋에 포함해 PR로 머지한다.**
+
+commit 전에 worktree의 `SPEC.md`에서 본 Sprint F-item row를 갱신한다:
+1. 상태를 `✅`로 전환
+2. 비고 앞에 `**완료(PR #(pending) Match {N}%, {날짜})** - {1줄 요약}. ` 추가
+   - PR 번호는 아직 모르므로 **`PR #(pending)` placeholder** 사용 (생성 직후 치환 - 아래 7b)
+3. §2 수치(완료/계획)는 건드리지 않는다 (Master/daily-check 책임 - 병렬 sprint 충돌 방지)
+
 **Tier 1**: `/ax:session-end` 실행 (커밋 + push + 문서 갱신)
 **Tier 2~3**: 직접 실행:
 ```bash
@@ -317,6 +329,15 @@ ${MATCH_RATE:-N/A}%
 ---
 🤖 Auto-generated from Sprint autopilot" 2>/dev/null || true)
   PR_NUM=$(echo "$PR_URL" | grep -oP '\d+$' || true)
+fi
+
+# 7b. SPEC placeholder 치환 (C2): PR 번호 확보 직후, CI watch 전에 수행
+#     - 이 push가 새 SHA로 CI를 트리거하므로 아래 checks --watch가 최종 SHA를 대기하게 됨
+if [ -n "$PR_NUM" ] && grep -q "PR #(pending)" SPEC.md 2>/dev/null; then
+  sed -i "s/PR #(pending)/PR #${PR_NUM}/g" SPEC.md
+  git add SPEC.md
+  git commit -m "docs(SPEC): Sprint ${SPRINT_NUM} F-item PR 번호 확정 (#${PR_NUM})"
+  git push
 fi
 
 # CI required check 통과를 명시 대기 후 merge (admin 토큰 함정 - 아래 주의 필수)
