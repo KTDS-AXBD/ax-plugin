@@ -155,7 +155,7 @@ Monitor(
   timeout_ms: 3600000,
   command: "bash <sprint 스킬 디렉터리>/scripts/sprint-monitor-watch.sh ${SIG_PROJECT} ${SIG_NUM}"
 )
-# sprint-monitor-watch.sh = signal 변화 diff + 종결/pane 감지 + idle stall WARN(10분 미진행+pane idle, rate limit 사각 검출)
+# sprint-monitor-watch.sh = signal 변화 diff + 종결/pane 감지 + idle stall WARN(기본 15분 미진행+pane idle 2회 확인, rate limit 사각 검출)
 # 반환된 task_id를 signal에 기록 (sprint skill Phase 5b 동일):
 sed -i "s/^MONITOR_TASK_ID=.*/MONITOR_TASK_ID=${TASK_ID}/" "$SIGNAL"
 ```
