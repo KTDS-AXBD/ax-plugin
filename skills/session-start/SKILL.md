@@ -19,6 +19,17 @@ allowed-tools:
 
 MEMORY.md(자동 로딩)에서 현재 상태 파악. `.git`이 파일이면 worktree → SPEC/MEMORY는 main repo에서 읽기, REQ/TD 점검 건너뜀.
 
+### 1b. LESSONS.md Consult (파일 존재 시)
+
+> Outer loop 5단계 사이클의 Consult 단계 (Sinclair Loop v1, 2026-06-13).
+> 메모리는 "로그 축적"이 아니라 검증→증류→**재참조** 파이프라인이어야 한다 - 규칙을 매번 재도출하지 않는다.
+
+프로젝트 루트에 `LESSONS.md`가 있으면:
+
+1. **🟢 규칙 선별 로드**: 전체를 다시 읽지 말고, 오늘 작업(`$ARGUMENTS`의 F-item/도메인)과 관련된 🟢 행만 골라 작업 맥락에 반영한다
+2. **🔴 경고**: 🔴(미검증 추측) 행이 있으면 `⚠️ 미검증 추측 N건 - 관련 작업 시 검증 우선` 1줄 경고. 오늘 작업과 직접 관련된 🔴이 있으면 해당 행을 명시
+3. 파일이 없으면 silent skip (Loop 미적용 프로젝트)
+
 ### 2. SPEC.md 부분 읽기 (토큰 최적화)
 
 **SPEC.md 전체를 읽지 않는다.** §6 Execution Plan(~28K tokens)과 §9 변경이력(~6K)은 건너뛴다.

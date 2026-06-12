@@ -708,6 +708,13 @@ Auto Memory 디렉토리의 MEMORY.md를 업데이트:
    - Phase 2에서 갱신한 SPEC.md §2 수치(tests/endpoints/services/schemas/D1)와 MEMORY.md "주요 지표", CLAUDE.md 수치를 비교
    - 3곳 중 불일치가 있으면 **파일시스템 실측값을 기준으로 3곳 모두 동기화**
    - 동기화 대상: tests 총수, API endpoints (routes 수), services 수, schemas 수, D1 migrations 범위
+5d. **LESSONS.md Distill** (프로젝트 루트에 LESSONS.md 존재 시):
+   > Outer loop 5단계 사이클의 Verify/Distill 단계 (Sinclair Loop v1, 2026-06-13).
+   > 상태 머신: 🔴 hypothesis → 🟡 verified → 🟢 rule. **🔴 상태로는 어떤 문서에도 승격 금지** (미검증 추측의 축적 방지).
+   - 이번 세션의 실패/재작업/해결 사례를 LESSONS.md 행으로 추가·갱신한다
+   - 🔴 행 중 이번 세션에서 재현 또는 테스트로 진단이 확정된 것 → 🟡 승격 (검증 칼럼에 근거 기록)
+   - 🟡 행 중 일반 규칙으로 증류 가능한 것 → 규칙(Distill) 칼럼 작성 + 🟢 승격 + MEMORY.md에 `[→CLAUDE]` 마커 항목 추가 (아래 6번이 CLAUDE.md로 승격)
+   - sprint iterate에서 발생한 갭이 LESSONS에 🔴로 기록돼 있으면 이번 세션 해소 여부를 반영한다
 6. **[→CLAUDE] 마커 승격**:
    - MEMORY.md에서 `[→CLAUDE]` 마커가 붙은 항목을 검색한다
    - 마커 항목이 프로젝트 CLAUDE.md에 이미 반영됐는지 확인한다
